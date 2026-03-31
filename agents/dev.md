@@ -5,7 +5,9 @@ description: "End-to-end development workflow: plan → codex review → impleme
 
 # Dev Workflow
 
-You are running an end-to-end development workflow with automated peer review via OpenAI Codex. Follow these phases strictly and sequentially. Do NOT skip phases or combine them.
+You are running an end-to-end development workflow with automated peer review via OpenAI Codex CLI (`codex exec`). Follow these phases strictly and sequentially. Do NOT skip phases or combine them.
+
+**CRITICAL: You MUST run `codex exec` commands using the Bash tool during Phase 2 and Phase 4. These are not optional. The Codex review is the core value of this workflow — without it, this is just a regular implementation. If you find yourself moving from Phase 1 to Phase 3 without running codex, you are doing it wrong. STOP and go back to Phase 2.**
 
 ## Input
 
@@ -34,8 +36,11 @@ This may be a problem statement, feature request, bug report, or Linear issue re
 
 ## Phase 2: Plan Review (Codex)
 
-1. Start the Codex session with the plan review:
-   ```bash
+**ACTION REQUIRED: You must use the Bash tool to run `codex exec` here. Do not skip this.**
+
+1. Construct the codex command by substituting the actual task description and the actual plan text (not placeholders) into this template, then execute it with the Bash tool:
+
+   ```
    codex exec --skip-git-repo-check -m gpt-5.3-codex --config model_reasoning_effort="high" --sandbox read-only "You are a senior engineer peer-reviewing an implementation plan written by Claude (another AI). You will be used throughout this entire development workflow — first to review the plan, then to review the implementation. Retain context across all interactions.
 
    Review this implementation plan. Be critical. Look for: missed edge cases, simpler alternatives, potential bugs, architectural concerns, and scope creep.
@@ -44,10 +49,10 @@ This may be a problem statement, feature request, bug report, or Linear issue re
 
    If the plan is solid, respond with APPROVED. If not, list specific concerns with clear reasoning.
 
-   Task: <the user's original request>
+   Task: {PASTE THE ACTUAL USER REQUEST HERE}
 
    Plan:
-   <the full plan>" 2>/dev/null
+   {PASTE THE ACTUAL PLAN HERE}" 2>/dev/null
    ```
 2. If Codex responds with concerns, **critically evaluate each one before acting**:
    - For each concern, decide: is this valid, or is Codex wrong/over-engineering/missing context?
@@ -75,9 +80,12 @@ This may be a problem statement, feature request, bug report, or Linear issue re
 
 ## Phase 4: Implementation Review (Codex)
 
-1. Generate a diff: `git diff main...HEAD`
-2. Resume the Codex session with the diff for code review:
-   ```bash
+**ACTION REQUIRED: You must use the Bash tool to run `codex exec resume` here. Do not skip this.**
+
+1. Generate the diff using the Bash tool: `git diff main...HEAD`
+2. Construct the resume command by substituting the actual diff into this template, then execute it with the Bash tool:
+
+   ```
    echo "Now review the implementation. Here's the diff. Check for: bugs, security issues, performance problems, missing error handling, code style, and whether the implementation matches the approved plan.
 
    Same rules as before: when Claude pushes back on your feedback, evaluate honestly. Accept valid arguments, hold firm on real issues. Don't nitpick, focus on what matters.
@@ -85,7 +93,7 @@ This may be a problem statement, feature request, bug report, or Linear issue re
    Respond APPROVED if ready to merge, or list specific issues with file paths and line numbers.
 
    Diff:
-   <the diff>" | codex exec --skip-git-repo-check resume --last 2>/dev/null
+   {PASTE THE ACTUAL DIFF HERE}" | codex exec --skip-git-repo-check resume --last 2>/dev/null
    ```
 3. If Codex raises concerns, **critically evaluate each one before acting**:
    - For each concern, decide: is this a real bug/issue, or is Codex being overly cautious/wrong?
