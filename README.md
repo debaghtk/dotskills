@@ -16,7 +16,7 @@ cd /path/to/project
 ~/dotskills/install.sh --project
 
 # Install a single item
-./install.sh --personal ux
+./install.sh --personal ds-ux
 ./install.sh --project dev
 ```
 
@@ -41,8 +41,8 @@ cd /path/to/project
 Skills are invoked inside a Claude Code session with `/skill-name`:
 
 ```
-/ux evaluate whether adding a settings page improves or hurts the onboarding flow
-/codex review this file for performance issues
+/ds-ux evaluate whether adding a settings page improves or hurts the onboarding flow
+/ds-codex review this file for performance issues
 ```
 
 Skills can also be auto-triggered by Claude when the task matches the skill's description.

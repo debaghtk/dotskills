@@ -1,5 +1,5 @@
 ---
-name: ux
+name: ds-ux
 description: "UX advocate agent. Use when making product, design, or feature decisions that impact user experience — feature proposals, UI reviews, copy/microcopy, user flow changes, form design, error handling, accessibility concerns."
 model: opus
 context: fork
