@@ -57,3 +57,55 @@ claude --agent research "best approach for real-time sync with conflict resoluti
 ```
 
 Or from within a Claude Code session using the Agent tool — Claude will pick the right agent based on the task.
+
+## Adding a new skill
+
+```bash
+mkdir skills/my-skill
+```
+
+Add `skills/my-skill/SKILL.md`:
+
+```yaml
+---
+name: my-skill
+description: When and why to use this skill
+---
+
+Your skill instructions here.
+```
+
+## Adding a new agent
+
+Add `agents/my-agent.md`:
+
+```yaml
+---
+name: my-agent
+description: When and why to use this agent
+---
+
+Your agent instructions here.
+```
+
+Re-run `./install.sh --personal` to pick up new items.
+
+## Plugins
+
+Manage Claude Code plugins like dotfiles — track what you use, restore on any machine.
+
+```bash
+# Install all plugins from manifest
+./plugins.sh install
+
+# List tracked plugins and marketplaces
+./plugins.sh list
+
+# Add a new plugin (installs + saves to plugins.txt)
+./plugins.sh add skill-codex@claude-plugins-official
+
+# Remove a plugin (uninstalls + removes from plugins.txt)
+./plugins.sh remove skill-codex@claude-plugins-official
+```
+
+Edit `plugins.txt` to manage your plugin list. Edit `marketplaces.txt` to register custom marketplaces.

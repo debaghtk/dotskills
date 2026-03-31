@@ -1,0 +1,2 @@
+# Plugins to install (one per line, plugin@marketplace format)
+skill-codex@claude-plugins-official

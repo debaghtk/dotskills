@@ -1,0 +1,2 @@
+# Custom marketplaces to register (one per line: name github-org/repo)
+# Example: my-marketplace acme-corp/claude-plugins
