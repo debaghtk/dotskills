@@ -57,35 +57,3 @@ claude --agent research "best approach for real-time sync with conflict resoluti
 ```
 
 Or from within a Claude Code session using the Agent tool — Claude will pick the right agent based on the task.
-
-## Adding a new skill
-
-```bash
-mkdir skills/my-skill
-```
-
-Add `skills/my-skill/SKILL.md`:
-
-```yaml
----
-name: my-skill
-description: When and why to use this skill
----
-
-Your skill instructions here.
-```
-
-## Adding a new agent
-
-Add `agents/my-agent.md`:
-
-```yaml
----
-name: my-agent
-description: When and why to use this agent
----
-
-Your agent instructions here.
-```
-
-Re-run `./install.sh --personal` to pick up new items.
