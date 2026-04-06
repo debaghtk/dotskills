@@ -1,11 +1,15 @@
 ---
 name: research
 description: "Research-first development. Use when the solution isn't obvious. Claude and Codex research independently, cross-validate findings, then plan and implement."
+skills:
+  - ds-codex
 ---
 
 # Research-Driven Development
 
 Use this workflow when the problem is clear but the solution isn't — you need to research before you can plan.
+
+**Default Codex model: `gpt-5.4`**. Always use `-m gpt-5.4` unless the user explicitly requests a different model. Do NOT ask the user for model selection — use gpt-5.4.
 
 ## Input
 
@@ -47,22 +51,13 @@ Check docs for recommended patterns, built-in solutions we might be overlooking,
 
 ### Step 2: Codex Research
 
-Start a Codex session to research the same problem from its perspective:
+**ACTION REQUIRED: You must use the Bash tool to run `codex exec` here. Do not skip this.**
 
-```bash
-codex exec --skip-git-repo-check -m gpt-5.3-codex --config model_reasoning_effort="high" --sandbox read-only "You are researching how to solve a technical problem. Investigate thoroughly using your knowledge.
+Start a Codex session following the ds-codex skill (use `--sandbox read-only`). The prompt to Codex must include:
 
-Problem: <the user's problem statement>
-
-Provide:
-1. Known approaches to this problem (with trade-offs)
-2. Industry standards and best practices
-3. Common pitfalls
-4. Libraries or tools commonly used
-5. Your recommended approach and why
-
-Be specific — include code patterns, library names, and version considerations." 2>/dev/null
-```
+- Context: "You are researching how to solve a technical problem. Investigate thoroughly using your knowledge."
+- The actual problem statement
+- Instructions: "Provide: 1) Known approaches to this problem (with trade-offs), 2) Industry standards and best practices, 3) Common pitfalls, 4) Libraries or tools commonly used, 5) Your recommended approach and why. Be specific — include code patterns, library names, and version considerations."
 
 ### Step 3: Cross-Validation
 
@@ -72,13 +67,10 @@ Compare Claude and Codex findings:
 2. **Where they disagree**: Investigate further. Use WebSearch or Context7 to break the tie. If still unclear, present both perspectives to the user.
 3. **What one found that the other missed**: Feed missing findings back to the other for a second opinion.
 
-Feed Claude's findings to Codex for reaction:
-```bash
-echo "I (Claude) researched the same problem and found the following. Cross-check against your findings. Where do you agree or disagree? What did I miss? What did you miss?
+Feed Claude's findings to Codex by resuming the session (follow ds-codex skill resume syntax). The prompt must include:
 
-Claude's findings:
-<your research summary>" | codex exec --skip-git-repo-check resume --last 2>/dev/null
-```
+- "I (Claude) researched the same problem and found the following. Cross-check against your findings. Where do you agree or disagree? What did I miss? What did you miss?"
+- Your actual research summary
 
 Then review Codex's response. If it surfaced new information, do additional WebSearch or Context7 lookups to verify.
 

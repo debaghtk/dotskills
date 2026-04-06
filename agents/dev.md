@@ -1,6 +1,8 @@
 ---
 name: dev
 description: "End-to-end development workflow: plan → codex review → implement → codex review → PR → QA checklist. Use when given a problem statement, feature request, or bug report."
+skills:
+  - ds-codex
 ---
 
 # Dev Workflow
@@ -17,10 +19,14 @@ This may be a problem statement, feature request, bug report, or Linear issue re
 
 ## Codex Session Management
 
+The ds-codex skill is preloaded — follow it for command construction, flags, error handling, and session management.
+
+**Default model: `gpt-5.4`**. Always use `-m gpt-5.4` unless the user explicitly requests a different model.
+
 **Use a single Codex session throughout the entire workflow.** This ensures Codex retains full context of the plan, its prior feedback, and the implementation.
 
-- **First Codex call**: Use `codex exec` to start a new session.
-- **All subsequent Codex calls**: Use `echo "<prompt>" | codex exec --skip-git-repo-check resume --last 2>/dev/null` to continue the same session.
+- **First Codex call**: Use `codex exec -m gpt-5.4 --skip-git-repo-check --sandbox read-only` to start a new session. Do NOT ask the user for model selection — use gpt-5.4.
+- **All subsequent Codex calls**: Resume the same session per ds-codex skill resume syntax.
 - Never start a new Codex session mid-workflow. Always resume.
 
 ## Phase 1: Planning
@@ -38,22 +44,12 @@ This may be a problem statement, feature request, bug report, or Linear issue re
 
 **ACTION REQUIRED: You must use the Bash tool to run `codex exec` here. Do not skip this.**
 
-1. Construct the codex command by substituting the actual task description and the actual plan text (not placeholders) into this template, then execute it with the Bash tool:
+1. Construct the codex command following the ds-codex skill (use `--sandbox read-only` for reviews). Execute it with the Bash tool. The prompt to Codex must include:
 
-   ```
-   codex exec --skip-git-repo-check -m gpt-5.3-codex --config model_reasoning_effort="high" --sandbox read-only "You are a senior engineer peer-reviewing an implementation plan written by Claude (another AI). You will be used throughout this entire development workflow — first to review the plan, then to review the implementation. Retain context across all interactions.
-
-   Review this implementation plan. Be critical. Look for: missed edge cases, simpler alternatives, potential bugs, architectural concerns, and scope creep.
-
-   Important: When Claude pushes back on your feedback, evaluate their reasoning honestly. If their argument is sound, accept it and move on. If you still believe there's a real issue, hold your ground and explain why with specifics. Don't cave just to be agreeable, and don't nitpick just to justify your role. Focus on things that actually matter.
-
-   If the plan is solid, respond with APPROVED. If not, list specific concerns with clear reasoning.
-
-   Task: {PASTE THE ACTUAL USER REQUEST HERE}
-
-   Plan:
-   {PASTE THE ACTUAL PLAN HERE}" 2>/dev/null
-   ```
+   - System context: "You are a senior engineer peer-reviewing an implementation plan written by Claude (another AI). You will be used throughout this entire development workflow — first to review the plan, then to review the implementation. Retain context across all interactions."
+   - Instructions: "Review this implementation plan. Be critical. Look for: missed edge cases, simpler alternatives, potential bugs, architectural concerns, and scope creep. When Claude pushes back on your feedback, evaluate their reasoning honestly. If their argument is sound, accept it and move on. If you still believe there's a real issue, hold your ground with specifics. Don't cave just to be agreeable, and don't nitpick just to justify your role. Focus on things that actually matter. If the plan is solid, respond with APPROVED. If not, list specific concerns with clear reasoning."
+   - The actual task description
+   - The actual plan text
 2. If Codex responds with concerns, **critically evaluate each one before acting**:
    - For each concern, decide: is this valid, or is Codex wrong/over-engineering/missing context?
    - **If you agree**: Fix it and note why.
@@ -83,18 +79,10 @@ This may be a problem statement, feature request, bug report, or Linear issue re
 **ACTION REQUIRED: You must use the Bash tool to run `codex exec resume` here. Do not skip this.**
 
 1. Generate the diff using the Bash tool: `git diff main...HEAD`
-2. Construct the resume command by substituting the actual diff into this template, then execute it with the Bash tool:
+2. Resume the Codex session following ds-codex skill resume syntax. The prompt to Codex must include:
 
-   ```
-   echo "Now review the implementation. Here's the diff. Check for: bugs, security issues, performance problems, missing error handling, code style, and whether the implementation matches the approved plan.
-
-   Same rules as before: when Claude pushes back on your feedback, evaluate honestly. Accept valid arguments, hold firm on real issues. Don't nitpick, focus on what matters.
-
-   Respond APPROVED if ready to merge, or list specific issues with file paths and line numbers.
-
-   Diff:
-   {PASTE THE ACTUAL DIFF HERE}" | codex exec --skip-git-repo-check resume --last 2>/dev/null
-   ```
+   - Instructions: "Now review the implementation. Here's the diff. Check for: bugs, security issues, performance problems, missing error handling, code style, and whether the implementation matches the approved plan. Same rules as before: when Claude pushes back on your feedback, evaluate honestly. Accept valid arguments, hold firm on real issues. Don't nitpick, focus on what matters. Respond APPROVED if ready to merge, or list specific issues with file paths and line numbers."
+   - The actual diff
 3. If Codex raises concerns, **critically evaluate each one before acting**:
    - For each concern, decide: is this a real bug/issue, or is Codex being overly cautious/wrong?
    - **If you agree**: Fix it, re-run tests.
