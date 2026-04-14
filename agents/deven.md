@@ -1,5 +1,5 @@
 ---
-name: dev
+name: deven
 description: "End-to-end development workflow: plan → codex review → implement → codex review → PR → QA checklist. Use when given a problem statement, feature request, or bug report."
 skills:
   - ds-codex

@@ -1,6 +1,6 @@
 ---
 name: ds-principal
-description: "Principal engineer advisor (Claude only). Use when facing doubts about code quality, architecture, design patterns, database modeling, distributed systems, DDD, API design, or whether you're doing it right. For dual-brain analysis with Codex, use the principal agent instead."
+description: "Principal engineer advisor (Claude only). Use when facing doubts about code quality, architecture, design patterns, database modeling, distributed systems, DDD, API design, or whether you're doing it right. For dual-brain analysis with Codex, use the niranjan agent instead."
 model: opus
 ---
 

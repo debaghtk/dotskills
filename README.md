@@ -17,7 +17,7 @@ cd /path/to/project
 
 # Install a single item
 ./install.sh --personal ds-ux
-./install.sh --project dev
+./install.sh --project deven
 ```
 
 ## Uninstall
@@ -52,7 +52,7 @@ Skills can also be auto-triggered by Claude when the task matches the skill's de
 Agents are invoked from the terminal with `claude --agent`:
 
 ```bash
-claude --agent dev "add rate limiting to the /api/search endpoint"
+claude --agent deven "add rate limiting to the /api/search endpoint"
 claude --agent research "best approach for real-time sync with conflict resolution"
 ```
 

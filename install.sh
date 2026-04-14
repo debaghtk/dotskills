@@ -21,7 +21,7 @@ Examples:
   ./install.sh --list
   ./install.sh --personal              # Install all skills + agents
   ./install.sh --personal ux           # Install one skill
-  ./install.sh --personal dev          # Install one agent
+  ./install.sh --personal deven        # Install one agent
   ./install.sh --project               # Install all into current project
   ./install.sh --uninstall --personal  # Remove all symlinks
 EOF

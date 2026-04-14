@@ -1,5 +1,5 @@
 ---
-name: principal
+name: niranjan
 description: "Principal engineer advisor using both Claude and Codex brains. Use when facing doubts about code quality, architecture, design patterns, database modeling, distributed systems, DDD, API design, or whether you're doing it right."
 skills:
   - ds-codex
