@@ -13,6 +13,8 @@ Modes:
   --personal [name]      Install to ~/.claude/ (all projects)
   --project  [name]      Install to ./.claude/ (current project)
   --list                 List available skills and agents
+  --sync <mode>          Install all + prune dangling/renamed symlinks
+                         mode: --personal or --project
   --uninstall <mode> [name]
                          Remove installed symlinks
                          mode: --personal or --project
@@ -23,6 +25,7 @@ Examples:
   ./install.sh --personal ux           # Install one skill
   ./install.sh --personal deven        # Install one agent
   ./install.sh --project               # Install all into current project
+  ./install.sh --sync --personal       # Install all + prune stale symlinks
   ./install.sh --uninstall --personal  # Remove all symlinks
 EOF
   exit 1
@@ -136,6 +139,30 @@ uninstall_item() {
   fi
 }
 
+prune_stale() {
+  local mode="$1"
+  local base
+  if [ "$mode" = "--personal" ]; then
+    base="$HOME/.claude"
+  elif [ "$mode" = "--project" ]; then
+    base="$(pwd)/.claude"
+  else
+    echo "Error: specify --personal or --project" >&2
+    exit 1
+  fi
+
+  for dir in "$base/skills" "$base/agents"; do
+    [ -d "$dir" ] || continue
+    for link in "$dir"/*; do
+      [ -L "$link" ] || continue
+      if [ ! -e "$link" ]; then
+        rm "$link"
+        echo "Pruned stale symlink $link"
+      fi
+    done
+  done
+}
+
 get_all_names() {
   if [ -d "$SKILLS_DIR" ]; then
     for dir in "$SKILLS_DIR"/*/; do
@@ -167,6 +194,17 @@ case "${1:-}" in
         install_item "$n" "$mode"
       done
     fi
+    ;;
+  --sync)
+    mode="${2:-}"
+    if [ -z "$mode" ]; then
+      echo "Error: --sync requires --personal or --project" >&2
+      exit 1
+    fi
+    for n in $(get_all_names); do
+      install_item "$n" "$mode"
+    done
+    prune_stale "$mode"
     ;;
   --uninstall)
     mode="${2:-}"
