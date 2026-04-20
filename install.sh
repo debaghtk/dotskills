@@ -4,20 +4,24 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILLS_DIR="$SCRIPT_DIR/skills"
 AGENTS_DIR="$SCRIPT_DIR/agents"
+CODEX_AGENTS_DIR="$SCRIPT_DIR/codex-agents"
 
 usage() {
   cat <<EOF
 Usage: ./install.sh <mode> [options]
 
 Modes:
-  --personal [name]      Install to ~/.claude/ (all projects)
-  --project  [name]      Install to ./.claude/ (current project)
+  --personal [name]      Install to ~/.claude/ and ~/.codex/ (all projects)
+  --project  [name]      Install to ./.claude/ and ./.codex/ (current project)
   --list                 List available skills and agents
   --sync <mode>          Install all + prune dangling/renamed symlinks
                          mode: --personal or --project
   --uninstall <mode> [name]
                          Remove installed symlinks
                          mode: --personal or --project
+
+Skills are installed for both Claude and Codex.
+Agents are installed as .md for Claude and .toml for Codex.
 
 Examples:
   ./install.sh --list
@@ -72,86 +76,106 @@ resolve_item() {
   fi
 }
 
-resolve_target_dir() {
+# Returns target dirs for a given mode/type/tool combo.
+# For skills: returns both claude and codex paths.
+# For agents: returns only claude path (codex has no agents).
+resolve_target_dirs() {
   local mode="$1" item_type="$2"
-  local base
+  local claude_base codex_base
   if [ "$mode" = "--personal" ]; then
-    base="$HOME/.claude"
+    claude_base="$HOME/.claude"
+    codex_base="$HOME/.codex"
   elif [ "$mode" = "--project" ]; then
-    base="$(pwd)/.claude"
+    claude_base="$(pwd)/.claude"
+    codex_base="$(pwd)/.codex"
   else
     echo "Error: specify --personal or --project" >&2
     exit 1
   fi
 
   if [ "$item_type" = "skill" ]; then
-    echo "$base/skills"
+    echo "$claude_base/skills"
+    echo "$codex_base/skills"
   else
-    echo "$base/agents"
+    echo "$claude_base/agents"
+    echo "$codex_base/agents"
   fi
 }
 
 install_item() {
   local name="$1" mode="$2"
   resolve_item "$name"
-  local target_dir
-  target_dir="$(resolve_target_dir "$mode" "$ITEM_TYPE")"
-  mkdir -p "$target_dir"
 
-  local dest
-  if [ "$ITEM_TYPE" = "skill" ]; then
-    dest="$target_dir/$name"
-  else
-    dest="$target_dir/$name.md"
-  fi
+  while IFS= read -r target_dir; do
+    mkdir -p "$target_dir"
 
-  if [ -L "$dest" ]; then
-    rm "$dest"
-  elif [ -e "$dest" ]; then
-    echo "Warning: $dest exists and is not a symlink, skipping" >&2
-    return 1
-  fi
+    local src="$ITEM_SRC" dest
+    if [ "$ITEM_TYPE" = "skill" ]; then
+      dest="$target_dir/$name"
+    elif [[ "$target_dir" == */.codex/* ]]; then
+      # Codex agents use .toml files from codex-agents/
+      if [ ! -f "$CODEX_AGENTS_DIR/$name.toml" ]; then
+        echo "Skipping agent '$name' for Codex (no .toml version)" >&2
+        continue
+      fi
+      src="$CODEX_AGENTS_DIR/$name.toml"
+      dest="$target_dir/$name.toml"
+    else
+      dest="$target_dir/$name.md"
+    fi
 
-  ln -s "$ITEM_SRC" "$dest"
-  echo "Installed $ITEM_TYPE '$name' -> $dest"
+    if [ -L "$dest" ]; then
+      rm "$dest"
+    elif [ -e "$dest" ]; then
+      echo "Warning: $dest exists and is not a symlink, skipping" >&2
+      continue
+    fi
+
+    ln -s "$src" "$dest"
+    echo "Installed $ITEM_TYPE '$name' -> $dest"
+  done < <(resolve_target_dirs "$mode" "$ITEM_TYPE")
 }
 
 uninstall_item() {
   local name="$1" mode="$2"
   resolve_item "$name"
-  local target_dir
-  target_dir="$(resolve_target_dir "$mode" "$ITEM_TYPE")"
 
-  local dest
-  if [ "$ITEM_TYPE" = "skill" ]; then
-    dest="$target_dir/$name"
-  else
-    dest="$target_dir/$name.md"
-  fi
+  while IFS= read -r target_dir; do
+    local dest
+    if [ "$ITEM_TYPE" = "skill" ]; then
+      dest="$target_dir/$name"
+    elif [[ "$target_dir" == */.codex/* ]]; then
+      dest="$target_dir/$name.toml"
+    else
+      dest="$target_dir/$name.md"
+    fi
 
-  if [ -L "$dest" ]; then
-    rm "$dest"
-    echo "Removed $dest"
-  elif [ -e "$dest" ]; then
-    echo "Warning: $dest is not a symlink, skipping" >&2
-  else
-    echo "Not installed: $name"
-  fi
+    if [ -L "$dest" ]; then
+      rm "$dest"
+      echo "Removed $dest"
+    elif [ -e "$dest" ]; then
+      echo "Warning: $dest is not a symlink, skipping" >&2
+    else
+      echo "Not installed: $name ($target_dir)"
+    fi
+  done < <(resolve_target_dirs "$mode" "$ITEM_TYPE")
 }
 
 prune_stale() {
   local mode="$1"
-  local base
+  local claude_base codex_base
   if [ "$mode" = "--personal" ]; then
-    base="$HOME/.claude"
+    claude_base="$HOME/.claude"
+    codex_base="$HOME/.codex"
   elif [ "$mode" = "--project" ]; then
-    base="$(pwd)/.claude"
+    claude_base="$(pwd)/.claude"
+    codex_base="$(pwd)/.codex"
   else
     echo "Error: specify --personal or --project" >&2
     exit 1
   fi
 
-  for dir in "$base/skills" "$base/agents"; do
+  for dir in "$claude_base/skills" "$claude_base/agents" "$codex_base/skills" "$codex_base/agents"; do
     [ -d "$dir" ] || continue
     for link in "$dir"/*; do
       [ -L "$link" ] || continue

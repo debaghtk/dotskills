@@ -1,0 +1,133 @@
+name = "research"
+description = "Research-first development. Use when the solution isn't obvious. Codex and Claude research independently, cross-validate findings, then plan and implement."
+
+developer_instructions = """
+# Research-Driven Development
+
+Use this workflow when the problem is clear but the solution isn't — you need to research before you can plan.
+
+**Default Claude model: `claude-opus-4-6`**. Always use `--model claude-opus-4-6` unless the user explicitly requests a different model. Do NOT ask the user for model selection.
+
+## Input
+
+The user provides: $ARGUMENTS
+
+This may be a problem statement, a feature with unclear implementation, or a technical question that needs investigation.
+
+## Phase 1: Clarify the Problem
+
+Before researching, make sure you understand what we're solving:
+
+1. Restate the problem in your own words.
+2. Identify what's unclear — is it the approach, the tool, the architecture, or the constraints?
+3. If requirements are ambiguous, ask the user to clarify before proceeding. Don't research a vague problem.
+
+## Phase 2: Parallel Research
+
+Codex and Claude research the same problem independently, then cross-validate.
+
+### Step 1: Codex Research
+
+Use your own tools to investigate:
+
+- Search the web for how other teams/companies have solved this problem, industry standards, common pitfalls, and recent approaches.
+- If the problem involves a specific library or framework, look up relevant APIs, patterns, and examples.
+- Explore the codebase to understand what's already implemented, current patterns, and available dependencies.
+- Search at least 2-3 different queries with different angles. Don't stop at the first result.
+
+### Step 2: Claude Research
+
+**ACTION REQUIRED: You must run `claude -p` here. Do not skip this.**
+
+Start a Claude session. The prompt to Claude must include:
+
+- Context: "You are researching how to solve a technical problem. Investigate thoroughly using your tools — read files, search the codebase, and use your knowledge."
+- The actual problem statement
+- Instructions: "Provide: 1) Known approaches to this problem (with trade-offs), 2) Industry standards and best practices, 3) Common pitfalls, 4) Libraries or tools commonly used, 5) Your recommended approach and why. Be specific — include code patterns, library names, and version considerations."
+
+Example:
+```bash
+echo "You are researching how to solve a technical problem. Investigate thoroughly.
+
+Problem: <problem statement>
+
+Provide: 1) Known approaches (with trade-offs), 2) Best practices, 3) Common pitfalls, 4) Libraries/tools, 5) Recommended approach and why. Be specific." | claude -p --model claude-opus-4-6 --allowedTools "Read,Grep,Glob,Bash(git:*),WebSearch"
+```
+
+### Step 3: Cross-Validation
+
+Compare Codex and Claude findings:
+
+1. **Where they agree**: These are high-confidence findings. Note them.
+2. **Where they disagree**: Investigate further. Search for more information to break the tie. If still unclear, present both perspectives to the user.
+3. **What one found that the other missed**: Feed missing findings back to the other for a second opinion.
+
+Feed Codex's findings to Claude by resuming the session:
+
+```bash
+echo "This is Codex (GPT-5.4) following up. I researched the same problem and found the following. Cross-check against your findings. Where do you agree or disagree? What did I miss? What did you miss?
+
+My findings:
+<your research summary>" | claude -p --continue
+```
+
+Then review Claude's response. If it surfaced new information, do additional searches to verify.
+
+### Step 4: Synthesize
+
+Compile the combined research into a summary:
+
+## Research Summary
+
+### Problem
+Restate the problem.
+
+### Approaches Found
+For each approach:
+- Description, pros, cons
+- Confidence level (high if both Codex and Claude agreed, medium if they diverged)
+
+### Points of Agreement
+Findings both Codex and Claude converged on.
+
+### Points of Disagreement
+Where they differed, and what further research revealed.
+
+### Recommendation
+Which approach and why, considering the codebase and constraints.
+
+### Sources
+Links to key references.
+
+Present this to the user and get alignment on the approach before proceeding.
+
+## Phase 3: Plan
+
+Once the user agrees on the approach:
+
+1. Write a detailed implementation plan:
+   - **Approach**: The chosen solution with rationale
+   - **Files to modify**: List every file with a summary of changes
+   - **Dependencies**: Any new packages or tools needed
+   - **Edge cases**: Informed by research findings
+   - **Testing strategy**: How we'll verify correctness
+2. Save the plan and present it to the user for approval.
+
+## Phase 4: Implementation
+
+1. Implement the approved plan.
+2. Reference documentation findings during implementation.
+3. Run tests and linters.
+
+## Rules
+
+- Never skip the research phase — it's the point of this workflow.
+- Always run both Codex and Claude research. Two perspectives are better than one.
+- Always cross-validate — feed findings into each other before synthesizing.
+- Always present research findings to the user before planning.
+- Always include sources for claims and recommendations.
+- If research reveals the problem is simpler than expected, say so and suggest a simpler approach.
+- If research reveals the problem is harder than expected, say so and discuss scope with the user.
+- Don't over-research. 3-5 good sources per researcher is enough. Move to planning once you have a clear picture.
+- Use the same Claude session throughout — always resume with `--continue`.
+"""

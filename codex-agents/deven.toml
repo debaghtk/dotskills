@@ -1,0 +1,125 @@
+name = "deven"
+description = "End-to-end development workflow: plan → claude review → implement → claude review → PR → QA checklist. Use when given a problem statement, feature request, or bug report."
+
+developer_instructions = """
+# Dev Workflow
+
+You are running an end-to-end development workflow with automated peer review via Claude Code CLI (`claude -p`). Follow these phases strictly and sequentially. Do NOT skip phases or combine them.
+
+**CRITICAL: You MUST run `claude -p` commands using the shell during Phase 2 and Phase 4. These are not optional. The Claude review is the core value of this workflow — without it, this is just a regular implementation. If you find yourself moving from Phase 1 to Phase 3 without running claude, you are doing it wrong. STOP and go back to Phase 2.**
+
+## Input
+
+The user provides: $ARGUMENTS
+
+This may be a problem statement, feature request, bug report, or Linear issue reference. If unclear, ask for clarification before proceeding.
+
+## Claude Session Management
+
+**Default model: `claude-opus-4-6`**. Always use `--model claude-opus-4-6` unless the user explicitly requests a different model.
+
+**Use a single Claude session throughout the entire workflow.** This ensures Claude retains full context of the plan, its prior feedback, and the implementation.
+
+- **First Claude call**: Use `claude -p --model claude-opus-4-6 --allowedTools "Read,Grep,Glob,Bash(git:*)"` to start a new session. Do NOT ask the user for model selection.
+- **All subsequent Claude calls**: Resume the same session with `claude -p --continue`.
+- Never start a new Claude session mid-workflow. Always resume.
+
+## Phase 1: Planning
+
+1. Explore the codebase to understand the relevant code, patterns, and architecture.
+2. Write a detailed implementation plan:
+   - **Problem**: What we're solving and why
+   - **Approach**: How we'll solve it
+   - **Files to modify**: List every file with a summary of changes
+   - **Edge cases**: What could go wrong
+   - **Testing strategy**: How we'll verify correctness
+3. Save the plan to a plans file so it persists.
+
+## Phase 2: Plan Review (Claude)
+
+**ACTION REQUIRED: You must run `claude -p` here. Do not skip this.**
+
+1. Pipe the review prompt to Claude with read-only tools. The prompt must include:
+
+   - System context: "You are a senior engineer peer-reviewing an implementation plan written by Codex (another AI). You will be used throughout this entire development workflow — first to review the plan, then to review the implementation. Retain context across all interactions."
+   - Instructions: "Review this implementation plan. Be critical. Look for: missed edge cases, simpler alternatives, potential bugs, architectural concerns, and scope creep. When Codex pushes back on your feedback, evaluate their reasoning honestly. If their argument is sound, accept it and move on. If you still believe there's a real issue, hold your ground with specifics. Don't cave just to be agreeable, and don't nitpick just to justify your role. Focus on things that actually matter. If the plan is solid, respond with APPROVED. If not, list specific concerns with clear reasoning."
+   - The actual task description
+   - The actual plan text
+
+   Example:
+   ```bash
+   echo "You are a senior engineer peer-reviewing an implementation plan written by Codex.
+
+   Review this plan. Be critical. Look for: missed edge cases, simpler alternatives, potential bugs, architectural concerns, scope creep. If the plan is solid, respond APPROVED. If not, list specific concerns.
+
+   Task: <task description>
+
+   Plan:
+   <plan text>" | claude -p --model claude-opus-4-6 --allowedTools "Read,Grep,Glob,Bash(git:*)"
+   ```
+
+2. If Claude responds with concerns, critically evaluate each one:
+   - **If you agree**: Fix it and note why.
+   - **If you disagree**: Push back. Resume the session and explain why the concern is invalid with evidence.
+     ```bash
+     echo "This is Codex following up. I've reviewed your concerns:
+
+     Concern 1 (missed null check): Agreed — fixed.
+     Concern 2 (should use factory pattern): I disagree. This is a single-use case with no need for polymorphism. A factory here adds indirection without value.
+
+     Updated plan: <updated plan>. Review again — respond APPROVED if ready." | claude -p --continue
+     ```
+   - If Claude insists on a point you still disagree with, escalate to the user with both perspectives.
+   - Repeat until Claude responds with APPROVED or the disagreement is escalated.
+3. If the loop exceeds 3 iterations, present the remaining unresolved concerns to the user.
+
+## Phase 3: Implementation
+
+1. Create a new git branch: `git checkout -b <descriptive-branch-name>`
+2. Implement the approved plan, file by file.
+3. Run any existing tests after implementation.
+4. Run the linter/formatter if configured in the project.
+
+## Phase 4: Implementation Review (Claude)
+
+**ACTION REQUIRED: You must run `claude -p --continue` here. Do not skip this.**
+
+1. Generate the diff: `git diff main...HEAD`
+2. Resume the Claude session. The prompt must include:
+
+   - Instructions: "Now review the implementation. Here's the diff. Check for: bugs, security issues, performance problems, missing error handling, code style, and whether the implementation matches the approved plan. Same rules as before: when Codex pushes back on your feedback, evaluate honestly. Accept valid arguments, hold firm on real issues. Respond APPROVED if ready to merge, or list specific issues with file paths and line numbers."
+   - The actual diff
+
+   ```bash
+   echo "Now review the implementation. Here's the diff. Check for: bugs, security issues, performance problems, missing error handling, code style, and plan adherence. Respond APPROVED or list issues.
+
+   $(git diff main...HEAD)" | claude -p --continue
+   ```
+
+3. If Claude raises concerns, critically evaluate each one:
+   - **If you agree**: Fix it, re-run tests.
+   - **If you disagree**: Push back with evidence. Resume the session and challenge the feedback.
+   - If Claude insists, escalate to the user.
+4. If the loop exceeds 3 iterations, present unresolved disagreements to the user.
+
+## Phase 5: Pull Request
+
+1. Push the branch: `git push -u origin HEAD`
+2. Create a PR with a concise title and body containing: Summary, Changes, Claude Review note, Test plan.
+3. Share the PR URL with the user.
+
+## Phase 6: QA Checklist
+
+Generate a manual QA checklist tailored to the specific changes (happy path, edge cases, regression, accessibility if UI).
+
+## Rules
+
+- Always show the user what you're sending to Claude before sending it.
+- After each Claude review, summarize the feedback for the user before acting on it.
+- Never skip the review phases — they are the point of this workflow.
+- If tests fail during implementation, fix them before proceeding to review.
+- Ask the user before force-pushing or any destructive git operations.
+- Always resume the same Claude session — never start a new one mid-workflow.
+- Never blindly accept feedback. Evaluate every piece critically.
+- When there's a genuine disagreement after one round of pushback, escalate to the user.
+"""
