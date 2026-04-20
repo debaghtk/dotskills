@@ -90,6 +90,24 @@ Your agent instructions here.
 
 Re-run `./install.sh --personal` to pick up new items.
 
+## Problems Template
+
+The `problems/` directory is a structured problem registry template. Copy it into your project:
+
+```bash
+cp -r ~/dotskills/problems /path/to/project/
+```
+
+Skills like `/ds-shobhit` write to this registry after framing problems. `/ds-vinay` reads from it before scoping.
+
+## Drift Hooks
+
+Post-commit hooks that nag when documentation drifts out of sync with code. See `hooks/README.md` for installation into your `.claude/settings.json`.
+
+## Chat Versions
+
+`docs/claude-project-prompts/` contains standalone system prompts for Claude.ai Projects — use these when you want Shobhit or Vinay in a chat interface without filesystem access. Includes a context block template for priming projects.
+
 ## Plugins
 
 Manage Claude Code plugins like dotfiles — track what you use, restore on any machine.
