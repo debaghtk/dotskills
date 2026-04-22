@@ -11,7 +11,7 @@ cd ~/dotskills
 # Install all skills + agents globally (available in every project)
 ./install.sh --personal
 
-# Or install into the current project only
+# Or install into the current project only (skills + agents + problems + hooks)
 cd /path/to/project
 ~/dotskills/install.sh --project
 
@@ -92,17 +92,27 @@ Re-run `./install.sh --personal` to pick up new items.
 
 ## Problems Template
 
-The `problems/` directory is a structured problem registry template. Copy it into your project:
+The `problems/` directory is a structured problem registry template. It's automatically copied into your project when you run `--project`:
 
 ```bash
-cp -r ~/dotskills/problems /path/to/project/
+~/dotskills/install.sh --project     # installs skills + agents + problems + hooks
+~/dotskills/install.sh --problems    # just the problems registry
 ```
+
+Each project gets its own copy (not a symlink) so the registry is mutable. Running again won't overwrite an existing `problems/` directory.
 
 Skills like `/ds-shobhit` write to this registry after framing problems. `/ds-vinay` reads from it before scoping.
 
 ## Drift Hooks
 
-Post-commit hooks that nag when documentation drifts out of sync with code. See `hooks/README.md` for installation into your `.claude/settings.json`.
+Post-commit hooks that nag when documentation drifts out of sync with code. Automatically installed into `.claude/settings.json` with `--project`:
+
+```bash
+~/dotskills/install.sh --project     # installs everything including hooks
+~/dotskills/install.sh --hooks       # just the hooks
+```
+
+Hooks are configured to point back to the dotskills source, so they stay up to date. Safe to run multiple times — existing hooks won't be duplicated, and other settings in your `settings.json` are preserved.
 
 ## Chat Versions
 

@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILLS_DIR="$SCRIPT_DIR/skills"
 AGENTS_DIR="$SCRIPT_DIR/agents"
 CODEX_AGENTS_DIR="$SCRIPT_DIR/codex-agents"
+PROBLEMS_DIR="$SCRIPT_DIR/problems"
+HOOKS_DIR="$SCRIPT_DIR/hooks"
 
 usage() {
   cat <<EOF
@@ -13,23 +15,29 @@ Usage: ./install.sh <mode> [options]
 Modes:
   --personal [name]      Install to ~/.claude/ and ~/.codex/ (all projects)
   --project  [name]      Install to ./.claude/ and ./.codex/ (current project)
+                         Also copies problems/ template and installs hooks
   --list                 List available skills and agents
   --sync <mode>          Install all + prune dangling/renamed symlinks
                          mode: --personal or --project
+  --problems             Copy problems/ registry template into current project
+  --hooks                Install drift-check hooks into .claude/settings.json
   --uninstall <mode> [name]
-                         Remove installed symlinks
-                         mode: --personal or --project
+                         Remove installed symlinks (and hooks if --project)
 
 Skills are installed for both Claude and Codex.
 Agents are installed as .md for Claude and .toml for Codex.
+Problems template is copied (not symlinked) — each project owns its registry.
+Hooks are configured in .claude/settings.json pointing back to dotskills source.
 
 Examples:
   ./install.sh --list
   ./install.sh --personal              # Install all skills + agents
   ./install.sh --personal ux           # Install one skill
   ./install.sh --personal deven        # Install one agent
-  ./install.sh --project               # Install all into current project
+  ./install.sh --project               # Install all + problems + hooks
   ./install.sh --sync --personal       # Install all + prune stale symlinks
+  ./install.sh --problems              # Just copy problems/ template
+  ./install.sh --hooks                 # Just install hooks
   ./install.sh --uninstall --personal  # Remove all symlinks
 EOF
   exit 1
@@ -200,6 +208,158 @@ get_all_names() {
   fi
 }
 
+install_problems() {
+  if [ -d "problems" ]; then
+    echo "problems/ already exists, skipping (won't overwrite existing registry)"
+    return
+  fi
+  cp -r "$PROBLEMS_DIR" ./problems
+  echo "Copied problems/ registry template"
+}
+
+install_hooks() {
+  local settings=".claude/settings.json"
+  mkdir -p .claude
+
+  # Collect all hook scripts
+  local hook_scripts=()
+  for script in "$HOOKS_DIR"/*.sh; do
+    [ -f "$script" ] || continue
+    hook_scripts+=("$script")
+  done
+  if [ ${#hook_scripts[@]} -eq 0 ]; then
+    echo "No hook scripts found in $HOOKS_DIR"
+    return
+  fi
+
+  # If settings.json doesn't exist, create it with hooks
+  if [ ! -f "$settings" ]; then
+    _write_hooks_json "$settings" "${hook_scripts[@]}"
+    echo "Created $settings with drift-check hooks"
+    return
+  fi
+
+  # Check which hooks are already installed
+  local missing=()
+  for script in "${hook_scripts[@]}"; do
+    if ! grep -q "$script" "$settings" 2>/dev/null; then
+      missing+=("$script")
+    fi
+  done
+
+  if [ ${#missing[@]} -eq 0 ]; then
+    echo "Hooks already configured in $settings"
+    return
+  fi
+
+  # Merge missing hooks into existing settings using python3 (available on macOS)
+  python3 - "$settings" "${missing[@]}" <<'PYEOF'
+import json, sys
+
+settings_path = sys.argv[1]
+new_scripts = sys.argv[2:]
+
+with open(settings_path) as f:
+    data = json.load(f)
+
+hooks = data.setdefault("hooks", {})
+post_tool = hooks.setdefault("PostToolUse", [])
+
+# Find or create the Bash matcher entry
+bash_entry = None
+for entry in post_tool:
+    if entry.get("matcher") == "Bash":
+        bash_entry = entry
+        break
+if bash_entry is None:
+    bash_entry = {"matcher": "Bash", "hooks": []}
+    post_tool.append(bash_entry)
+
+existing_cmds = {h.get("command", "") for h in bash_entry.get("hooks", [])}
+for script in new_scripts:
+    if script not in existing_cmds:
+        bash_entry["hooks"].append({"type": "command", "command": script})
+
+with open(settings_path, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PYEOF
+  echo "Added hooks to $settings: ${missing[*]}"
+}
+
+_write_hooks_json() {
+  local dest="$1"; shift
+  local scripts=("$@")
+
+  # Build hooks array entries
+  local hooks_json=""
+  for i in "${!scripts[@]}"; do
+    [ "$i" -gt 0 ] && hooks_json+=","
+    hooks_json+="
+            {\"type\": \"command\", \"command\": \"${scripts[$i]}\"}"
+  done
+
+  cat > "$dest" <<ENDJSON
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [$hooks_json
+        ]
+      }
+    ]
+  }
+}
+ENDJSON
+}
+
+uninstall_hooks() {
+  local settings=".claude/settings.json"
+  if [ ! -f "$settings" ]; then
+    echo "No $settings found"
+    return
+  fi
+
+  # Remove hook entries that point to our HOOKS_DIR
+  if ! grep -q "$HOOKS_DIR" "$settings" 2>/dev/null; then
+    echo "No dotskills hooks found in $settings"
+    return
+  fi
+
+  python3 - "$settings" "$HOOKS_DIR" <<'PYEOF'
+import json, sys
+
+settings_path = sys.argv[1]
+hooks_dir = sys.argv[2]
+
+with open(settings_path) as f:
+    data = json.load(f)
+
+hooks = data.get("hooks", {})
+post_tool = hooks.get("PostToolUse", [])
+
+for entry in post_tool:
+    if entry.get("matcher") == "Bash":
+        entry["hooks"] = [h for h in entry.get("hooks", [])
+                          if hooks_dir not in h.get("command", "")]
+
+# Clean up empty structures
+for entry in post_tool[:]:
+    if entry.get("matcher") == "Bash" and not entry.get("hooks"):
+        post_tool.remove(entry)
+if not post_tool:
+    hooks.pop("PostToolUse", None)
+if not hooks:
+    data.pop("hooks", None)
+
+with open(settings_path, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PYEOF
+  echo "Removed dotskills hooks from $settings"
+}
+
 # --- Main ---
 
 [ $# -eq 0 ] && usage
@@ -217,6 +377,10 @@ case "${1:-}" in
       for n in $(get_all_names); do
         install_item "$n" "$mode"
       done
+      if [ "$mode" = "--project" ]; then
+        install_problems
+        install_hooks
+      fi
     fi
     ;;
   --sync)
@@ -229,6 +393,16 @@ case "${1:-}" in
       install_item "$n" "$mode"
     done
     prune_stale "$mode"
+    if [ "$mode" = "--project" ]; then
+      install_problems
+      install_hooks
+    fi
+    ;;
+  --problems)
+    install_problems
+    ;;
+  --hooks)
+    install_hooks
     ;;
   --uninstall)
     mode="${2:-}"
@@ -239,6 +413,10 @@ case "${1:-}" in
       for n in $(get_all_names); do
         uninstall_item "$n" "$mode"
       done
+      if [ "$mode" = "--project" ]; then
+        uninstall_hooks
+        echo "Note: problems/ not removed (contains project data). Delete manually if needed."
+      fi
     fi
     ;;
   *)
