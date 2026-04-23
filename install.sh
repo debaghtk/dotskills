@@ -221,91 +221,147 @@ install_hooks() {
   local settings=".claude/settings.json"
   mkdir -p .claude
 
-  # Collect all hook scripts
-  local hook_scripts=()
+  # Classify hook scripts into PreToolUse and PostToolUse
+  local pre_hooks=()
+  local post_hooks=()
   for script in "$HOOKS_DIR"/*.sh; do
     [ -f "$script" ] || continue
-    hook_scripts+=("$script")
+    case "$(basename "$script")" in
+      approve-tests.sh) pre_hooks+=("$script") ;;
+      *)                post_hooks+=("$script") ;;
+    esac
   done
-  if [ ${#hook_scripts[@]} -eq 0 ]; then
+  if [ ${#pre_hooks[@]} -eq 0 ] && [ ${#post_hooks[@]} -eq 0 ]; then
     echo "No hook scripts found in $HOOKS_DIR"
     return
   fi
 
   # If settings.json doesn't exist, create it with hooks
   if [ ! -f "$settings" ]; then
-    _write_hooks_json "$settings" "${hook_scripts[@]}"
-    echo "Created $settings with drift-check hooks"
+    _write_hooks_json "$settings"
+    echo "Created $settings with hooks"
     return
   fi
 
   # Check which hooks are already installed
-  local missing=()
-  for script in "${hook_scripts[@]}"; do
+  local missing_pre=()
+  local missing_post=()
+  for script in "${pre_hooks[@]}"; do
     if ! grep -q "$script" "$settings" 2>/dev/null; then
-      missing+=("$script")
+      missing_pre+=("$script")
+    fi
+  done
+  for script in "${post_hooks[@]}"; do
+    if ! grep -q "$script" "$settings" 2>/dev/null; then
+      missing_post+=("$script")
     fi
   done
 
-  if [ ${#missing[@]} -eq 0 ]; then
+  if [ ${#missing_pre[@]} -eq 0 ] && [ ${#missing_post[@]} -eq 0 ]; then
     echo "Hooks already configured in $settings"
     return
   fi
 
   # Merge missing hooks into existing settings using python3 (available on macOS)
-  python3 - "$settings" "${missing[@]}" <<'PYEOF'
+  python3 - "$settings" "${#missing_pre[@]}" "${missing_pre[@]}" "${missing_post[@]}" <<'PYEOF'
 import json, sys
 
 settings_path = sys.argv[1]
-new_scripts = sys.argv[2:]
+num_pre = int(sys.argv[2])
+all_scripts = sys.argv[3:]
+pre_scripts = all_scripts[:num_pre]
+post_scripts = all_scripts[num_pre:]
 
 with open(settings_path) as f:
     data = json.load(f)
 
 hooks = data.setdefault("hooks", {})
-post_tool = hooks.setdefault("PostToolUse", [])
 
-# Find or create the Bash matcher entry
-bash_entry = None
-for entry in post_tool:
-    if entry.get("matcher") == "Bash":
-        bash_entry = entry
-        break
-if bash_entry is None:
-    bash_entry = {"matcher": "Bash", "hooks": []}
-    post_tool.append(bash_entry)
+# Add PreToolUse hooks (Write|Edit|MultiEdit matcher)
+if pre_scripts:
+    pre_tool = hooks.setdefault("PreToolUse", [])
+    write_entry = None
+    for entry in pre_tool:
+        if entry.get("matcher") == "Write|Edit|MultiEdit":
+            write_entry = entry
+            break
+    if write_entry is None:
+        write_entry = {"matcher": "Write|Edit|MultiEdit", "hooks": []}
+        pre_tool.append(write_entry)
+    existing_cmds = {h.get("command", "") for h in write_entry.get("hooks", [])}
+    for script in pre_scripts:
+        cmd = f"bash {script}"
+        if cmd not in existing_cmds:
+            write_entry["hooks"].append({"type": "command", "command": cmd})
 
-existing_cmds = {h.get("command", "") for h in bash_entry.get("hooks", [])}
-for script in new_scripts:
-    if script not in existing_cmds:
-        bash_entry["hooks"].append({"type": "command", "command": script})
+# Add PostToolUse hooks (Bash matcher)
+if post_scripts:
+    post_tool = hooks.setdefault("PostToolUse", [])
+    bash_entry = None
+    for entry in post_tool:
+        if entry.get("matcher") == "Bash":
+            bash_entry = entry
+            break
+    if bash_entry is None:
+        bash_entry = {"matcher": "Bash", "hooks": []}
+        post_tool.append(bash_entry)
+    existing_cmds = {h.get("command", "") for h in bash_entry.get("hooks", [])}
+    for script in post_scripts:
+        if script not in existing_cmds:
+            bash_entry["hooks"].append({"type": "command", "command": script})
 
 with open(settings_path, "w") as f:
     json.dump(data, f, indent=2)
     f.write("\n")
 PYEOF
-  echo "Added hooks to $settings: ${missing[*]}"
+  local all_missing=("${missing_pre[@]}" "${missing_post[@]}")
+  echo "Added hooks to $settings: ${all_missing[*]}"
 }
 
 _write_hooks_json() {
-  local dest="$1"; shift
-  local scripts=("$@")
+  local dest="$1"
 
-  # Build hooks array entries
-  local hooks_json=""
-  for i in "${!scripts[@]}"; do
-    [ "$i" -gt 0 ] && hooks_json+=","
-    hooks_json+="
-            {\"type\": \"command\", \"command\": \"${scripts[$i]}\"}"
+  # Classify hook scripts
+  local pre_hooks=()
+  local post_hooks=()
+  for script in "$HOOKS_DIR"/*.sh; do
+    [ -f "$script" ] || continue
+    case "$(basename "$script")" in
+      approve-tests.sh) pre_hooks+=("$script") ;;
+      *)                post_hooks+=("$script") ;;
+    esac
+  done
+
+  # Build PreToolUse hooks JSON
+  local pre_json=""
+  for i in "${!pre_hooks[@]}"; do
+    [ "$i" -gt 0 ] && pre_json+=","
+    pre_json+="
+            {\"type\": \"command\", \"command\": \"bash ${pre_hooks[$i]}\"}"
+  done
+
+  # Build PostToolUse hooks JSON
+  local post_json=""
+  for i in "${!post_hooks[@]}"; do
+    [ "$i" -gt 0 ] && post_json+=","
+    post_json+="
+            {\"type\": \"command\", \"command\": \"${post_hooks[$i]}\"}"
   done
 
   cat > "$dest" <<ENDJSON
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [$pre_json
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Bash",
-        "hooks": [$hooks_json
+        "hooks": [$post_json
         ]
       }
     ]
@@ -337,19 +393,18 @@ with open(settings_path) as f:
     data = json.load(f)
 
 hooks = data.get("hooks", {})
-post_tool = hooks.get("PostToolUse", [])
 
-for entry in post_tool:
-    if entry.get("matcher") == "Bash":
+# Clean both PreToolUse and PostToolUse
+for phase in ("PreToolUse", "PostToolUse"):
+    entries = hooks.get(phase, [])
+    for entry in entries:
         entry["hooks"] = [h for h in entry.get("hooks", [])
                           if hooks_dir not in h.get("command", "")]
+    # Remove entries with no hooks left
+    hooks[phase] = [e for e in entries if e.get("hooks")]
+    if not hooks[phase]:
+        hooks.pop(phase, None)
 
-# Clean up empty structures
-for entry in post_tool[:]:
-    if entry.get("matcher") == "Bash" and not entry.get("hooks"):
-        post_tool.remove(entry)
-if not post_tool:
-    hooks.pop("PostToolUse", None)
 if not hooks:
     data.pop("hooks", None)
 
