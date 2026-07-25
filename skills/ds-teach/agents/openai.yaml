@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Teach"
+  short_description: "Build durable skills through focused lessons"
+  default_prompt: "Use $ds-teach to teach me a topic through short, mission-driven lessons."
