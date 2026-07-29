@@ -1,6 +1,6 @@
 # dotskills
 
-My reusable [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skills and agents.
+My reusable skills and agents for [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://github.com/openai/codex), and [Kimi Code](https://www.kimi.com/code/docs/en/).
 
 ## Install
 
@@ -45,18 +45,24 @@ Skills are invoked inside a Claude Code session with `/skill-name`:
 /ds-codex review this file for performance issues
 ```
 
-Skills can also be auto-triggered by Claude when the task matches the skill's description.
+In Kimi Code, the same skills are invoked with `/skill:<name>`:
+
+```
+/skill:ds-ux evaluate whether adding a settings page improves or hurts the onboarding flow
+```
+
+Skills can also be auto-triggered when the task matches the skill's description.
 
 ### Agents
 
-Agents are invoked from the terminal with `claude --agent`:
+Agents are invoked from the terminal with `claude --agent` or `kimi --agent`:
 
 ```bash
 claude --agent deven "add rate limiting to the /api/search endpoint"
-claude --agent research "best approach for real-time sync with conflict resolution"
+kimi --agent research "best approach for real-time sync with conflict resolution"
 ```
 
-Or from within a Claude Code session using the Agent tool — Claude will pick the right agent based on the task.
+Or from within a session using the Agent tool — the assistant will pick the right agent based on the task.
 
 ## Adding a new skill
 
@@ -113,6 +119,8 @@ Post-commit hooks that nag when documentation drifts out of sync with code. Auto
 ```
 
 Hooks are configured to point back to the dotskills source, so they stay up to date. Safe to run multiple times — existing hooks won't be duplicated, and other settings in your `settings.json` are preserved.
+
+Note: hooks are Claude-only. Kimi Code reads hooks from the user-level `~/.kimi-code/config.toml` (`[[hooks]]` entries), which this installer does not manage.
 
 ## Chat Versions
 

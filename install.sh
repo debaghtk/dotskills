@@ -13,8 +13,8 @@ usage() {
 Usage: ./install.sh <mode> [options]
 
 Modes:
-  --personal [name]      Install to ~/.claude/ and ~/.codex/ (all projects)
-  --project  [name]      Install to ./.claude/ and ./.codex/ (current project)
+  --personal [name]      Install to ~/.claude/, ~/.codex/ and ~/.kimi-code/ (all projects)
+  --project  [name]      Install to ./.claude/, ./.codex/ and ./.kimi-code/ (current project)
                          Also copies problems/ template and installs hooks
   --list                 List available skills and agents
   --sync <mode>          Install all + prune dangling/renamed symlinks
@@ -24,10 +24,11 @@ Modes:
   --uninstall <mode> [name]
                          Remove installed symlinks (and hooks if --project)
 
-Skills are installed for both Claude and Codex.
-Agents are installed as .md for Claude and .toml for Codex.
+Skills are installed for Claude, Codex, and Kimi Code.
+Agents are installed as .md for Claude and Kimi Code, and .toml for Codex.
 Problems template is copied (not symlinked) — each project owns its registry.
-Hooks are configured in .claude/settings.json pointing back to dotskills source.
+Hooks are configured in .claude/settings.json pointing back to dotskills source
+(Kimi Code reads hooks only from ~/.kimi-code/config.toml — not managed here).
 
 Examples:
   ./install.sh --list
@@ -85,17 +86,18 @@ resolve_item() {
 }
 
 # Returns target dirs for a given mode/type/tool combo.
-# For skills: returns both claude and codex paths.
-# For agents: returns only claude path (codex has no agents).
+# For skills and agents: returns claude, codex, and kimi paths.
 resolve_target_dirs() {
   local mode="$1" item_type="$2"
-  local claude_base codex_base
+  local claude_base codex_base kimi_base
   if [ "$mode" = "--personal" ]; then
     claude_base="$HOME/.claude"
     codex_base="$HOME/.codex"
+    kimi_base="${KIMI_CODE_HOME:-$HOME/.kimi-code}"
   elif [ "$mode" = "--project" ]; then
     claude_base="$(pwd)/.claude"
     codex_base="$(pwd)/.codex"
+    kimi_base="$(pwd)/.kimi-code"
   else
     echo "Error: specify --personal or --project" >&2
     exit 1
@@ -104,9 +106,11 @@ resolve_target_dirs() {
   if [ "$item_type" = "skill" ]; then
     echo "$claude_base/skills"
     echo "$codex_base/skills"
+    echo "$kimi_base/skills"
   else
     echo "$claude_base/agents"
     echo "$codex_base/agents"
+    echo "$kimi_base/agents"
   fi
 }
 
@@ -171,19 +175,21 @@ uninstall_item() {
 
 prune_stale() {
   local mode="$1"
-  local claude_base codex_base
+  local claude_base codex_base kimi_base
   if [ "$mode" = "--personal" ]; then
     claude_base="$HOME/.claude"
     codex_base="$HOME/.codex"
+    kimi_base="${KIMI_CODE_HOME:-$HOME/.kimi-code}"
   elif [ "$mode" = "--project" ]; then
     claude_base="$(pwd)/.claude"
     codex_base="$(pwd)/.codex"
+    kimi_base="$(pwd)/.kimi-code"
   else
     echo "Error: specify --personal or --project" >&2
     exit 1
   fi
 
-  for dir in "$claude_base/skills" "$claude_base/agents" "$codex_base/skills" "$codex_base/agents"; do
+  for dir in "$claude_base/skills" "$claude_base/agents" "$codex_base/skills" "$codex_base/agents" "$kimi_base/skills" "$kimi_base/agents"; do
     [ -d "$dir" ] || continue
     for link in "$dir"/*; do
       [ -L "$link" ] || continue
