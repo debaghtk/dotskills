@@ -1,0 +1,4 @@
+interface:
+  display_name: "Linear Project"
+  short_description: "Coordinate continuous cross-repo work in Linear"
+  default_prompt: "Use $linear-project to coordinate this work through the relevant Linear project."
