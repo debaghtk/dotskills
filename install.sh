@@ -13,21 +13,27 @@ usage() {
 Usage: ./install.sh <mode> [options]
 
 Modes:
-  --personal [name]      Install to ~/.claude/ and ~/.codex/ (all projects)
-  --project  [name]      Install to ./.claude/ and ./.codex/ (current project)
+  --personal [name]      Install to ~/.claude/, ~/.codex/ and ~/.kimi-code/ (all projects)
+  --project  [name]      Install to ./.claude/, ./.codex/ and ./.kimi-code/ (current project)
                          Also copies problems/ template and installs hooks
   --list                 List available skills and agents
   --sync <mode>          Install all + prune dangling/renamed symlinks
                          mode: --personal or --project
   --problems             Copy problems/ registry template into current project
-  --hooks                Install drift-check hooks into .claude/settings.json
+  --hooks                Install hooks into ./.claude/settings.json and
+                         ./.codex/hooks.json (current project)
+  --kimi-hooks [name..]  Install hooks into ~/.kimi-code/config.toml
+                         (user-level, all projects; no name = all hooks)
   --uninstall <mode> [name]
                          Remove installed symlinks (and hooks if --project)
+                         mode: --personal, --project, or --kimi-hooks [name..]
 
-Skills are installed for both Claude and Codex.
-Agents are installed as .md for Claude and .toml for Codex.
+Skills are installed for Claude, Codex, and Kimi Code.
+Agents are installed as .md for Claude and Kimi Code, and .toml for Codex.
 Problems template is copied (not symlinked) — each project owns its registry.
-Hooks are configured in .claude/settings.json pointing back to dotskills source.
+Hooks point back to dotskills source, so they stay up to date.
+Note: Codex hooks require codex_hooks = true under [features] in
+~/.codex/config.toml, and only support Bash (no file-write hooks).
 
 Examples:
   ./install.sh --list
@@ -37,7 +43,9 @@ Examples:
   ./install.sh --project               # Install all + problems + hooks
   ./install.sh --sync --personal       # Install all + prune stale symlinks
   ./install.sh --problems              # Just copy problems/ template
-  ./install.sh --hooks                 # Just install hooks
+  ./install.sh --hooks                 # Just install hooks (claude + codex)
+  ./install.sh --kimi-hooks block-railway   # Install one hook for Kimi
+  ./install.sh --uninstall --kimi-hooks     # Remove all dotskills Kimi hooks
   ./install.sh --uninstall --personal  # Remove all symlinks
 EOF
   exit 1
@@ -85,17 +93,18 @@ resolve_item() {
 }
 
 # Returns target dirs for a given mode/type/tool combo.
-# For skills: returns both claude and codex paths.
-# For agents: returns only claude path (codex has no agents).
+# For skills and agents: returns claude, codex, and kimi paths.
 resolve_target_dirs() {
   local mode="$1" item_type="$2"
-  local claude_base codex_base
+  local claude_base codex_base kimi_base
   if [ "$mode" = "--personal" ]; then
     claude_base="$HOME/.claude"
     codex_base="$HOME/.codex"
+    kimi_base="${KIMI_CODE_HOME:-$HOME/.kimi-code}"
   elif [ "$mode" = "--project" ]; then
     claude_base="$(pwd)/.claude"
     codex_base="$(pwd)/.codex"
+    kimi_base="$(pwd)/.kimi-code"
   else
     echo "Error: specify --personal or --project" >&2
     exit 1
@@ -104,9 +113,11 @@ resolve_target_dirs() {
   if [ "$item_type" = "skill" ]; then
     echo "$claude_base/skills"
     echo "$codex_base/skills"
+    echo "$kimi_base/skills"
   else
     echo "$claude_base/agents"
     echo "$codex_base/agents"
+    echo "$kimi_base/agents"
   fi
 }
 
@@ -171,19 +182,21 @@ uninstall_item() {
 
 prune_stale() {
   local mode="$1"
-  local claude_base codex_base
+  local claude_base codex_base kimi_base
   if [ "$mode" = "--personal" ]; then
     claude_base="$HOME/.claude"
     codex_base="$HOME/.codex"
+    kimi_base="${KIMI_CODE_HOME:-$HOME/.kimi-code}"
   elif [ "$mode" = "--project" ]; then
     claude_base="$(pwd)/.claude"
     codex_base="$(pwd)/.codex"
+    kimi_base="$(pwd)/.kimi-code"
   else
     echo "Error: specify --personal or --project" >&2
     exit 1
   fi
 
-  for dir in "$claude_base/skills" "$claude_base/agents" "$codex_base/skills" "$codex_base/agents"; do
+  for dir in "$claude_base/skills" "$claude_base/agents" "$codex_base/skills" "$codex_base/agents" "$kimi_base/skills" "$kimi_base/agents"; do
     [ -d "$dir" ] || continue
     for link in "$dir"/*; do
       [ -L "$link" ] || continue
@@ -217,161 +230,143 @@ install_problems() {
   echo "Copied problems/ registry template"
 }
 
-install_hooks() {
-  local settings=".claude/settings.json"
-  mkdir -p .claude
-
-  # Classify hook scripts into PreToolUse and PostToolUse
-  local pre_hooks=()
-  local post_hooks=()
+# Classify hook scripts by event/matcher.
+# Sets: PRE_WRITE_HOOKS, PRE_BASH_HOOKS, POST_BASH_HOOKS (arrays of script paths)
+classify_hooks() {
+  PRE_WRITE_HOOKS=()
+  PRE_BASH_HOOKS=()
+  POST_BASH_HOOKS=()
   for script in "$HOOKS_DIR"/*.sh; do
     [ -f "$script" ] || continue
     case "$(basename "$script")" in
-      approve-tests.sh) pre_hooks+=("$script") ;;
-      *)                post_hooks+=("$script") ;;
+      approve-tests.sh) PRE_WRITE_HOOKS+=("$script") ;;
+      block-railway.sh) PRE_BASH_HOOKS+=("$script") ;;
+      *)                POST_BASH_HOOKS+=("$script") ;;
     esac
   done
-  if [ ${#pre_hooks[@]} -eq 0 ] && [ ${#post_hooks[@]} -eq 0 ]; then
-    echo "No hook scripts found in $HOOKS_DIR"
+}
+
+# Install hooks into the current project's .claude/settings.json and .codex/hooks.json
+install_hooks() {
+  install_hooks_json ".claude/settings.json" claude
+  install_hooks_json ".codex/hooks.json" codex
+}
+
+# $1 = target file, $2 = flavor (claude|codex) — both use the same JSON schema
+install_hooks_json() {
+  local settings="$1" flavor="$2"
+  mkdir -p "$(dirname "$settings")"
+  classify_hooks
+
+  if [ "$flavor" = codex ]; then
+    # Codex hooks only fire for the Bash tool — file-write hooks unsupported
+    if [ ${#PRE_WRITE_HOOKS[@]} -gt 0 ]; then
+      echo "Note: Codex hooks only support the Bash tool, skipping: ${PRE_WRITE_HOOKS[*]##*/}"
+      PRE_WRITE_HOOKS=()
+    fi
+    if ! grep -q 'codex_hooks' "${CODEX_HOME:-$HOME/.codex}/config.toml" 2>/dev/null; then
+      echo "Note: Codex hooks are experimental and off by default. To enable, add to ~/.codex/config.toml:"
+      echo "  [features]"
+      echo "  codex_hooks = true"
+    fi
+  fi
+
+  if [ ${#PRE_WRITE_HOOKS[@]} -eq 0 ] && [ ${#PRE_BASH_HOOKS[@]} -eq 0 ] && [ ${#POST_BASH_HOOKS[@]} -eq 0 ]; then
+    echo "No hook scripts to install for $flavor"
     return
   fi
 
-  # If settings.json doesn't exist, create it with hooks
+  local created=false
   if [ ! -f "$settings" ]; then
-    _write_hooks_json "$settings"
-    echo "Created $settings with hooks"
-    return
+    echo '{}' > "$settings"
+    created=true
   fi
 
-  # Check which hooks are already installed
-  local missing_pre=()
-  local missing_post=()
-  for script in "${pre_hooks[@]}"; do
-    if ! grep -q "$script" "$settings" 2>/dev/null; then
-      missing_pre+=("$script")
-    fi
-  done
-  for script in "${post_hooks[@]}"; do
-    if ! grep -q "$script" "$settings" 2>/dev/null; then
-      missing_post+=("$script")
-    fi
-  done
+  # Determine which hooks are missing (per group, empty-array safe)
+  local missing_pw=() missing_pb=() missing_po=() script
+  if [ ${#PRE_WRITE_HOOKS[@]} -gt 0 ]; then
+    for script in "${PRE_WRITE_HOOKS[@]}"; do
+      grep -qF "$script" "$settings" 2>/dev/null || missing_pw+=("$script")
+    done
+  fi
+  if [ ${#PRE_BASH_HOOKS[@]} -gt 0 ]; then
+    for script in "${PRE_BASH_HOOKS[@]}"; do
+      grep -qF "$script" "$settings" 2>/dev/null || missing_pb+=("$script")
+    done
+  fi
+  if [ ${#POST_BASH_HOOKS[@]} -gt 0 ]; then
+    for script in "${POST_BASH_HOOKS[@]}"; do
+      grep -qF "$script" "$settings" 2>/dev/null || missing_po+=("$script")
+    done
+  fi
 
-  if [ ${#missing_pre[@]} -eq 0 ] && [ ${#missing_post[@]} -eq 0 ]; then
+  if [ ${#missing_pw[@]} -eq 0 ] && [ ${#missing_pb[@]} -eq 0 ] && [ ${#missing_po[@]} -eq 0 ]; then
     echo "Hooks already configured in $settings"
     return
   fi
 
+  local all_missing=()
+  [ ${#missing_pw[@]} -gt 0 ] && all_missing+=("${missing_pw[@]}")
+  [ ${#missing_pb[@]} -gt 0 ] && all_missing+=("${missing_pb[@]}")
+  [ ${#missing_po[@]} -gt 0 ] && all_missing+=("${missing_po[@]}")
+
   # Merge missing hooks into existing settings using python3 (available on macOS)
-  python3 - "$settings" "${#missing_pre[@]}" "${missing_pre[@]}" "${missing_post[@]}" <<'PYEOF'
+  python3 - "$settings" "${#missing_pw[@]}" "${#missing_pb[@]}" "${all_missing[@]}" <<'PYEOF'
 import json, sys
 
 settings_path = sys.argv[1]
-num_pre = int(sys.argv[2])
-all_scripts = sys.argv[3:]
-pre_scripts = all_scripts[:num_pre]
-post_scripts = all_scripts[num_pre:]
+num_pw = int(sys.argv[2])
+num_pb = int(sys.argv[3])
+scripts = sys.argv[4:]
+pre_write = scripts[:num_pw]
+pre_bash = scripts[num_pw:num_pw + num_pb]
+post_bash = scripts[num_pw + num_pb:]
 
 with open(settings_path) as f:
     data = json.load(f)
 
 hooks = data.setdefault("hooks", {})
 
-# Add PreToolUse hooks (Write|Edit|MultiEdit matcher)
-if pre_scripts:
-    pre_tool = hooks.setdefault("PreToolUse", [])
-    write_entry = None
-    for entry in pre_tool:
-        if entry.get("matcher") == "Write|Edit|MultiEdit":
-            write_entry = entry
+def add_hooks(phase, matcher, cmds, prefix_bash):
+    if not cmds:
+        return
+    entries = hooks.setdefault(phase, [])
+    entry = None
+    for e in entries:
+        if e.get("matcher") == matcher:
+            entry = e
             break
-    if write_entry is None:
-        write_entry = {"matcher": "Write|Edit|MultiEdit", "hooks": []}
-        pre_tool.append(write_entry)
-    existing_cmds = {h.get("command", "") for h in write_entry.get("hooks", [])}
-    for script in pre_scripts:
-        cmd = f"bash {script}"
-        if cmd not in existing_cmds:
-            write_entry["hooks"].append({"type": "command", "command": cmd})
+    if entry is None:
+        entry = {"matcher": matcher, "hooks": []}
+        entries.append(entry)
+    existing = {h.get("command", "") for h in entry.get("hooks", [])}
+    for script in cmds:
+        cmd = f"bash {script}" if prefix_bash else script
+        if cmd not in existing:
+            entry["hooks"].append({"type": "command", "command": cmd})
 
-# Add PostToolUse hooks (Bash matcher)
-if post_scripts:
-    post_tool = hooks.setdefault("PostToolUse", [])
-    bash_entry = None
-    for entry in post_tool:
-        if entry.get("matcher") == "Bash":
-            bash_entry = entry
-            break
-    if bash_entry is None:
-        bash_entry = {"matcher": "Bash", "hooks": []}
-        post_tool.append(bash_entry)
-    existing_cmds = {h.get("command", "") for h in bash_entry.get("hooks", [])}
-    for script in post_scripts:
-        if script not in existing_cmds:
-            bash_entry["hooks"].append({"type": "command", "command": script})
+add_hooks("PreToolUse", "Write|Edit|MultiEdit", pre_write, True)
+add_hooks("PreToolUse", "Bash", pre_bash, True)
+add_hooks("PostToolUse", "Bash", post_bash, False)
 
 with open(settings_path, "w") as f:
     json.dump(data, f, indent=2)
     f.write("\n")
 PYEOF
-  local all_missing=("${missing_pre[@]}" "${missing_post[@]}")
-  echo "Added hooks to $settings: ${all_missing[*]}"
-}
-
-_write_hooks_json() {
-  local dest="$1"
-
-  # Classify hook scripts
-  local pre_hooks=()
-  local post_hooks=()
-  for script in "$HOOKS_DIR"/*.sh; do
-    [ -f "$script" ] || continue
-    case "$(basename "$script")" in
-      approve-tests.sh) pre_hooks+=("$script") ;;
-      *)                post_hooks+=("$script") ;;
-    esac
-  done
-
-  # Build PreToolUse hooks JSON
-  local pre_json=""
-  for i in "${!pre_hooks[@]}"; do
-    [ "$i" -gt 0 ] && pre_json+=","
-    pre_json+="
-            {\"type\": \"command\", \"command\": \"bash ${pre_hooks[$i]}\"}"
-  done
-
-  # Build PostToolUse hooks JSON
-  local post_json=""
-  for i in "${!post_hooks[@]}"; do
-    [ "$i" -gt 0 ] && post_json+=","
-    post_json+="
-            {\"type\": \"command\", \"command\": \"${post_hooks[$i]}\"}"
-  done
-
-  cat > "$dest" <<ENDJSON
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Write|Edit|MultiEdit",
-        "hooks": [$pre_json
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [$post_json
-        ]
-      }
-    ]
-  }
-}
-ENDJSON
+  if [ "$created" = true ]; then
+    echo "Created $settings with hooks: ${all_missing[*]}"
+  else
+    echo "Added hooks to $settings: ${all_missing[*]}"
+  fi
 }
 
 uninstall_hooks() {
-  local settings=".claude/settings.json"
+  uninstall_hooks_json ".claude/settings.json"
+  uninstall_hooks_json ".codex/hooks.json"
+}
+
+uninstall_hooks_json() {
+  local settings="$1"
   if [ ! -f "$settings" ]; then
     echo "No $settings found"
     return
@@ -413,6 +408,122 @@ with open(settings_path, "w") as f:
     f.write("\n")
 PYEOF
   echo "Removed dotskills hooks from $settings"
+}
+
+# --- Kimi Code hooks (user-level ~/.kimi-code/config.toml only) ---
+
+kimi_config() {
+  echo "${KIMI_CODE_HOME:-$HOME/.kimi-code}/config.toml"
+}
+
+# Install hooks into Kimi's config.toml as [[hooks]] entries.
+# Usage: install_kimi_hooks [name ...] — no names installs all hooks.
+install_kimi_hooks() {
+  local names=("$@")
+  local config
+  config="$(kimi_config)"
+  mkdir -p "$(dirname "$config")"
+  [ -f "$config" ] || touch "$config"
+  classify_hooks
+
+  local all_hooks=()
+  [ ${#PRE_WRITE_HOOKS[@]} -gt 0 ] && all_hooks+=("${PRE_WRITE_HOOKS[@]}")
+  [ ${#PRE_BASH_HOOKS[@]} -gt 0 ] && all_hooks+=("${PRE_BASH_HOOKS[@]}")
+  [ ${#POST_BASH_HOOKS[@]} -gt 0 ] && all_hooks+=("${POST_BASH_HOOKS[@]}")
+  if [ ${#all_hooks[@]} -eq 0 ]; then
+    echo "No hook scripts found in $HOOKS_DIR"
+    return
+  fi
+
+  # Filter by name if given (matches basename with or without .sh)
+  local selected=() script name
+  if [ ${#names[@]} -eq 0 ]; then
+    selected=("${all_hooks[@]}")
+  else
+    for script in "${all_hooks[@]}"; do
+      for name in "${names[@]}"; do
+        if [ "$(basename "$script" .sh)" = "${name%.sh}" ]; then
+          selected+=("$script")
+          break
+        fi
+      done
+    done
+  fi
+  if [ ${#selected[@]} -eq 0 ]; then
+    echo "No matching hooks found for: ${names[*]}" >&2
+    return 1
+  fi
+
+  local event matcher
+  for script in "${selected[@]}"; do
+    case "$(basename "$script")" in
+      approve-tests.sh)
+        event="PreToolUse"; matcher="Write|Edit"
+        echo "Note: approve-tests reads from /dev/tty — if Kimi hooks can't open a tty, spec writes will be blocked."
+        ;;
+      block-railway.sh)
+        event="PreToolUse"; matcher="Bash"
+        ;;
+      *)
+        event="PostToolUse"; matcher="Bash"
+        echo "Note: $(basename "$script") prints to stderr, but Kimi only appends stdout to context — nags may not surface."
+        ;;
+    esac
+
+    if grep -qF "$script" "$config"; then
+      echo "Already in $config: $(basename "$script")"
+      continue
+    fi
+
+    cat >> "$config" <<EOF
+
+[[hooks]]
+event = "$event"
+matcher = "$matcher"
+command = "bash $script"
+EOF
+    echo "Added to $config: $(basename "$script") ($event, matcher \"$matcher\")"
+  done
+}
+
+# Remove dotskills [[hooks]] entries from Kimi's config.toml.
+# Usage: uninstall_kimi_hooks [name ...] — no names removes all dotskills hooks.
+uninstall_kimi_hooks() {
+  local config
+  config="$(kimi_config)"
+  if [ ! -f "$config" ]; then
+    echo "No $config found"
+    return
+  fi
+  if ! grep -q "$HOOKS_DIR" "$config" 2>/dev/null; then
+    echo "No dotskills hooks found in $config"
+    return
+  fi
+
+  python3 - "$config" "$HOOKS_DIR" "$@" <<'PYEOF'
+import re, sys
+
+config_path = sys.argv[1]
+hooks_dir = sys.argv[2]
+names = [n[:-3] if n.endswith(".sh") else n for n in sys.argv[3:]]
+
+with open(config_path) as f:
+    text = f.read()
+
+parts = re.split(r"(?m)^(?=\[\[hooks\]\])", text)
+
+def should_drop(block):
+    if not block.startswith("[[hooks]]") or hooks_dir not in block:
+        return False
+    if not names:
+        return True
+    return any(n in block for n in names)
+
+kept = [b for b in parts if not should_drop(b)]
+with open(config_path, "w") as f:
+    f.write("".join(kept))
+PYEOF
+  echo "Removed dotskills hooks from $config"
 }
 
 # --- Main ---
@@ -459,10 +570,17 @@ case "${1:-}" in
   --hooks)
     install_hooks
     ;;
+  --kimi-hooks)
+    shift
+    install_kimi_hooks "$@"
+    ;;
   --uninstall)
     mode="${2:-}"
     name="${3:-}"
-    if [ -n "$name" ]; then
+    if [ "$mode" = "--kimi-hooks" ]; then
+      shift 2
+      uninstall_kimi_hooks "$@"
+    elif [ -n "$name" ]; then
       uninstall_item "$name" "$mode"
     else
       for n in $(get_all_names); do
