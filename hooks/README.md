@@ -7,11 +7,12 @@ blocks (reason on stderr), exit code 0 allows.
 
 ## What These Do
 
-- **block-railway.sh** — PreToolUse on `Bash`. Hard-blocks destructive
+- **block-railway.sh** — PreToolUse on `Bash`. Blocks direct destructive
   `railway` CLI commands (`up`, `delete`, `down`, `redeploy`, `remove`,
   `domain`, `volume`, and `variables --set/--delete`). Read-only commands
-  (`status`, `logs`, plain `variables`) pass through. The block message tells
-  the agent to ask you to run the command manually.
+  (`status`, `logs`, plain `variables`) pass through. This is a best-effort
+  guardrail, not a security boundary: shell indirection can bypass it, and it
+  allows the command when `jq` is unavailable or the hook input is malformed.
 - **approve-tests.sh** — PreToolUse on `Write|Edit`. Intercepts writes to
   `*_spec.rb` files and requires a `y` in the terminal before the write goes
   through. (Claude/Kimi only — Codex hooks don't support file-write tools.)

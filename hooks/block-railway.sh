@@ -9,7 +9,7 @@ if ! command -v jq &>/dev/null; then
 fi
 
 input=$(cat)
-command=$(echo "$input" | jq -r '.tool_input.command // empty')
+command=$(jq -r '.tool_input.command // empty' <<<"$input" 2>/dev/null) || exit 0
 [ -z "$command" ] && exit 0
 
 block() {
@@ -26,7 +26,7 @@ fi
 
 # Variable mutations (plain `railway variables` lists — allowed)
 if echo "$command" | grep -qE '(^|[;&|]+[[:space:]]*)railway[[:space:]]+variables([[:space:]]|$)' \
-   && echo "$command" | grep -qE -- '--set|--delete'; then
+   && echo "$command" | grep -qE -- '--set([[:space:]]|=|$)|--delete([[:space:]]|=|$)'; then
   block
 fi
 
