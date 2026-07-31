@@ -109,18 +109,17 @@ Each project gets its own copy (not a symlink) so the registry is mutable. Runni
 
 Skills like `/ds-shobhit` write to this registry after framing problems. `/ds-vinay` reads from it before scoping.
 
-## Drift Hooks
+## Hooks
 
-Post-commit hooks that nag when documentation drifts out of sync with code. Automatically installed into `.claude/settings.json` with `--project`:
+Hooks that intercept or observe tool calls — `block-railway.sh` (hard-blocks destructive Railway CLI commands), `approve-tests.sh` (requires terminal approval for spec-file writes), and the drift checks (nag when commits touch infra/product paths but `ARCHITECTURE.md`/`Product.md` are stale). Automatically installed with `--project`:
 
 ```bash
 ~/dotskills/install.sh --project     # installs everything including hooks
-~/dotskills/install.sh --hooks       # just the hooks
+~/dotskills/install.sh --hooks       # just the hooks (claude + codex, current project)
+~/dotskills/install.sh --kimi-hooks  # hooks for Kimi (user-level ~/.kimi-code/config.toml)
 ```
 
-Hooks are configured to point back to the dotskills source, so they stay up to date. Safe to run multiple times — existing hooks won't be duplicated, and other settings in your `settings.json` are preserved.
-
-Note: hooks are Claude-only. Kimi Code reads hooks from the user-level `~/.kimi-code/config.toml` (`[[hooks]]` entries), which this installer does not manage.
+Hooks are configured to point back to the dotskills source, so they stay up to date. Safe to run multiple times — existing hooks won't be duplicated, and other settings are preserved. Codex hooks need `codex_hooks = true` under `[features]` in `~/.codex/config.toml`. See `hooks/README.md` for details and per-tool caveats.
 
 ## Chat Versions
 
