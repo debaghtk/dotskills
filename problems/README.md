@@ -1,6 +1,6 @@
 # Problems Registry
 
-A structured log of identified problems across the project. Skills like `/ds-shobhit` write here after framing; `/ds-vinay` reads here before scoping.
+A structured log of identified problems across the project. Skills like `/ds-inception` write here after framing problems.
 
 ## Entry Format
 
@@ -9,7 +9,7 @@ Every problem entry follows this structure:
 ```markdown
 ### <short-title>
 - **Filed:** YYYY-MM-DD
-- **Filed-by:** shobhit | vinay | human
+- **Filed-by:** inception | human
 - **Status:** open | investigating | scoped | resolved | archived
 - **Framing:** <1-2 sentence problem statement>
 - **Context:** <optional link to spec, conversation, or commit>
@@ -33,14 +33,13 @@ open → investigating → scoped → resolved → archived
 
 - **open** — problem identified, not yet being worked on
 - **investigating** — actively gathering information
-- **scoped** — acceptance criteria defined (usually via `/ds-vinay`)
+- **scoped** — acceptance criteria defined
 - **resolved** — fix shipped
 - **archived** — moved to `archive/` quarterly
 
 ## Filing Rules
 
-- `/ds-shobhit` files after user confirms the category
-- `/ds-vinay` may file during scoping if a gap is discovered
+- `/ds-inception` files after user confirms the category
 - Humans file directly in the appropriate category file
 - One problem per entry — decompose compound problems
 - When archiving, move the entry to `archive/YYYY-QN.md`

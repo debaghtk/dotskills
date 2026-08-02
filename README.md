@@ -17,6 +17,7 @@ cd /path/to/project
 
 # Install a single item
 ./install.sh --personal ds-ux
+./install.sh --personal mountain
 ./install.sh --project deven
 ```
 
@@ -107,7 +108,7 @@ The `problems/` directory is a structured problem registry template. It's automa
 
 Each project gets its own copy (not a symlink) so the registry is mutable. Running again won't overwrite an existing `problems/` directory.
 
-Skills like `/ds-shobhit` write to this registry after framing problems. `/ds-vinay` reads from it before scoping.
+Skills like `/ds-inception` write to this registry after framing problems.
 
 ## Hooks
 
@@ -123,7 +124,7 @@ Hooks are configured to point back to the dotskills source, so they stay up to d
 
 ## Chat Versions
 
-`docs/claude-project-prompts/` contains standalone system prompts for Claude.ai Projects — use these when you want Shobhit or Vinay in a chat interface without filesystem access. Includes a context block template for priming projects.
+`docs/claude-project-prompts/` contains standalone system prompts for Claude.ai Projects — use these when you want Inception in a chat interface without filesystem access. Includes a context block template for priming projects.
 
 ## Plugins
 

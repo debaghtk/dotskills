@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mountain"
+  short_description: "Plan and drive a long-running effort via a Linear project + queue"
+  default_prompt: "Use $mountain to set up or continue this effort as a Linear project with an ordered queue."

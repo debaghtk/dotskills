@@ -1,5 +1,5 @@
 ---
-name: ds-shobhit
+name: ds-inception
 description: "Problem framing & premise challenge. Use when you need to define what problem you're actually solving before jumping to solutions — feature requests, bug patterns, architectural concerns, or any 'we should build X' impulse."
 model: opus
 context: fork
@@ -54,7 +54,7 @@ After user confirms, append the entry to `problems/<category>.md` using this for
 ```markdown
 ### <short-title>
 - **Filed:** <today's date>
-- **Filed-by:** shobhit
+- **Filed-by:** inception
 - **Status:** open
 - **Framing:** <the 1-2 sentence problem statement from your frame>
 - **Context:** <link to spec if --doc was used, otherwise omit>
@@ -87,7 +87,7 @@ After user confirms, append the entry to `problems/<category>.md` using this for
 If the user's input contains `--doc`:
 1. Remove `--doc` from the input before processing
 2. After filing, write an expanded problem artifact to `.claude/specs/<slug>.md`
-3. The spec includes: full problem frame, expanded context, related decisions from DECISIONS_HISTORY.md, stakeholder impact analysis, and "Questions for Scoping" (handoff prompts for `/ds-vinay`)
+3. The spec includes: full problem frame, expanded context, related decisions from DECISIONS_HISTORY.md, stakeholder impact analysis, and "Questions for Scoping" handoff prompts
 4. Slug: lowercase the short-title, replace spaces/special chars with hyphens
 
 ## Anti-Patterns

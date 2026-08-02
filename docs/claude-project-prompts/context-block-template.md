@@ -1,6 +1,6 @@
 # Context Block Template
 
-Copy this template, fill in each section, and paste into your Claude Project's system instructions to give Shobhit or Vinay full project context.
+Copy this template, fill in each section, and paste into your Claude Project's system instructions to give Inception full project context.
 
 ---
 
@@ -40,7 +40,7 @@ Copy this template, fill in each section, and paste into your Claude Project's s
 
 ## Team Context
 
-<!-- Who works on what — helps the PM (Vinay) scope handoffs correctly -->
+<!-- Who works on what — helps scope handoffs correctly -->
 
 **Engineering:**
 **Product:**
