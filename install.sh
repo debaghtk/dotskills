@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILLS_DIR="$SCRIPT_DIR/skills"
 AGENTS_DIR="$SCRIPT_DIR/agents"
 CODEX_AGENTS_DIR="$SCRIPT_DIR/codex-agents"
+OPENCODE_AGENTS_DIR="$SCRIPT_DIR/opencode-agents"
 PROBLEMS_DIR="$SCRIPT_DIR/problems"
 HOOKS_DIR="$SCRIPT_DIR/hooks"
 
@@ -13,42 +14,89 @@ usage() {
 Usage: ./install.sh <mode> [options]
 
 Modes:
-  --personal [name]      Install to ~/.claude/, ~/.codex/ and ~/.kimi-code/ (all projects)
-  --project  [name]      Install to ./.claude/, ./.codex/ and ./.kimi-code/ (current project)
+  --personal [name]      Install to ~/.claude/, ~/.codex/, ~/.kimi-code/, and
+                         ~/.config/opencode/ (all projects)
+  --project  [name]      Install to ./.claude/, ./.codex/, ./.kimi-code/, and
+                         ./.opencode/ (current project)
                          Also copies problems/ template and installs hooks
   --list                 List available skills and agents
   --sync <mode>          Install all + prune dangling/renamed symlinks
                          mode: --personal or --project
   --problems             Copy problems/ registry template into current project
-  --hooks                Install hooks into ./.claude/settings.json and
-                         ./.codex/hooks.json (current project)
+  --hooks                Install hooks into ./.claude/settings.json,
+                         ./.codex/hooks.json, and ./.opencode/plugins/
+                         (current project)
   --kimi-hooks [name..]  Install hooks into ~/.kimi-code/config.toml
                          (user-level, all projects; no name = all hooks)
+  --opencode-hooks       Install the hooks plugin into
+                         ~/.config/opencode/plugins/ (user-level, all projects)
   --uninstall <mode> [name]
                          Remove installed symlinks (and hooks if --project)
-                         mode: --personal, --project, or --kimi-hooks [name..]
+                         mode: --personal, --project, --kimi-hooks [name..],
+                         or --opencode-hooks
 
-Skills are installed for Claude, Codex, and Kimi Code.
-Agents are installed as .md for Claude and Kimi Code, and .toml for Codex.
+Skills are installed for Claude, Codex, Kimi Code, and OpenCode.
+Agents are installed as .md for Claude and Kimi Code, .toml for Codex, and
+.md (OpenCode's own agent format) for OpenCode.
 Problems template is copied (not symlinked) — each project owns its registry.
 Hooks point back to dotskills source, so they stay up to date.
 Note: Codex hooks require codex_hooks = true under [features] in
 ~/.codex/config.toml, and only support Bash (no file-write hooks).
+Note: the OpenCode hooks plugin shells out to the same bash scripts as the
+other tools — see hooks/README.md for its caveats (no per-hook selection).
 
 Examples:
   ./install.sh --list
-  ./install.sh --personal              # Install all skills + agents
-  ./install.sh --personal ux           # Install one skill
-  ./install.sh --personal deven        # Install one agent
-  ./install.sh --project               # Install all + problems + hooks
-  ./install.sh --sync --personal       # Install all + prune stale symlinks
-  ./install.sh --problems              # Just copy problems/ template
-  ./install.sh --hooks                 # Just install hooks (claude + codex)
+  ./install.sh --personal                   # Install all skills + agents
+  ./install.sh --personal ux                # Install one skill
+  ./install.sh --personal research          # Install one agent
+  ./install.sh --project                    # Install all + problems + hooks
+  ./install.sh --sync --personal            # Install all + prune stale symlinks
+  ./install.sh --problems                   # Just copy problems/ template
+  ./install.sh --hooks                      # Just install hooks (claude + codex + opencode)
   ./install.sh --kimi-hooks block-railway   # Install one hook for Kimi
+  ./install.sh --opencode-hooks             # Install hooks plugin for OpenCode (personal)
   ./install.sh --uninstall --kimi-hooks     # Remove all dotskills Kimi hooks
-  ./install.sh --uninstall --personal  # Remove all symlinks
+  ./install.sh --uninstall --opencode-hooks # Remove dotskills OpenCode hooks plugin
+  ./install.sh --uninstall --personal       # Remove all symlinks
 EOF
   exit 1
+}
+
+# Extract the value of a top-level "description:" frontmatter key from a
+# skill/agent file. Handles a plain (optionally quoted) single-line value as
+# well as YAML block scalars (`description: >` or `description: |`, with or
+# without chomping indicators), which a plain regex would otherwise flatten
+# to just the scalar indicator itself.
+extract_description() {
+  awk '
+    !found && /^description:/ {
+      val = $0
+      sub(/^description: */, "", val)
+      if (val ~ /^[>|][+-]?$/) {
+        folded = 1
+        next
+      }
+      gsub(/^"|"$/, "", val)
+      print val
+      found = 1
+      exit
+    }
+    folded && /^[[:space:]]/ {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      buf = (buf == "") ? line : buf " " line
+      next
+    }
+    folded {
+      print buf
+      found = 1
+      exit
+    }
+    END {
+      if (folded && !found) print buf
+    }
+  ' "$1"
 }
 
 list_items() {
@@ -58,9 +106,7 @@ list_items() {
       [ -d "$dir" ] || continue
       name="$(basename "$dir")"
       desc=""
-      if [ -f "$dir/SKILL.md" ]; then
-        desc=$(sed -n '/^description:/{ s/^description: *["]*//; s/"$//; p; q; }' "$dir/SKILL.md")
-      fi
+      [ -f "$dir/SKILL.md" ] && desc=$(extract_description "$dir/SKILL.md")
       printf "  %-20s %s\n" "$name" "$desc"
     done
   fi
@@ -70,7 +116,7 @@ list_items() {
     for file in "$AGENTS_DIR"/*.md; do
       [ -f "$file" ] || continue
       name="$(basename "$file" .md)"
-      desc=$(sed -n '/^description:/{ s/^description: *["]*//; s/"$//; p; q; }' "$file")
+      desc=$(extract_description "$file")
       printf "  %-20s %s\n" "$name" "$desc"
     done
   fi
@@ -92,46 +138,51 @@ resolve_item() {
   fi
 }
 
-# Returns target dirs for a given mode/type/tool combo.
-# For skills and agents: returns claude, codex, and kimi paths.
+# Returns target dirs for a given mode/type/tool combo, one "tool:path" pair
+# per line. Tool tags are explicit (not sniffed from the path) since
+# "opencode" contains "codex" as a substring and would confuse a pattern
+# match on the base dir.
 resolve_target_dirs() {
   local mode="$1" item_type="$2"
-  local claude_base codex_base kimi_base
+  local claude_base codex_base kimi_base opencode_base
   if [ "$mode" = "--personal" ]; then
     claude_base="$HOME/.claude"
     codex_base="$HOME/.codex"
     kimi_base="${KIMI_CODE_HOME:-$HOME/.kimi-code}"
+    opencode_base="${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}"
   elif [ "$mode" = "--project" ]; then
     claude_base="$(pwd)/.claude"
     codex_base="$(pwd)/.codex"
     kimi_base="$(pwd)/.kimi-code"
+    opencode_base="$(pwd)/.opencode"
   else
     echo "Error: specify --personal or --project" >&2
     exit 1
   fi
 
+  local sub
   if [ "$item_type" = "skill" ]; then
-    echo "$claude_base/skills"
-    echo "$codex_base/skills"
-    echo "$kimi_base/skills"
+    sub="skills"
   else
-    echo "$claude_base/agents"
-    echo "$codex_base/agents"
-    echo "$kimi_base/agents"
+    sub="agents"
   fi
+  echo "claude:$claude_base/$sub"
+  echo "codex:$codex_base/$sub"
+  echo "kimi:$kimi_base/$sub"
+  echo "opencode:$opencode_base/$sub"
 }
 
 install_item() {
   local name="$1" mode="$2"
   resolve_item "$name"
 
-  while IFS= read -r target_dir; do
+  while IFS=: read -r tool target_dir; do
     mkdir -p "$target_dir"
 
     local src="$ITEM_SRC" dest
     if [ "$ITEM_TYPE" = "skill" ]; then
       dest="$target_dir/$name"
-    elif [[ "$target_dir" == */.codex/* ]]; then
+    elif [ "$tool" = "codex" ]; then
       # Codex agents use .toml files from codex-agents/
       if [ ! -f "$CODEX_AGENTS_DIR/$name.toml" ]; then
         echo "Skipping agent '$name' for Codex (no .toml version)" >&2
@@ -139,6 +190,14 @@ install_item() {
       fi
       src="$CODEX_AGENTS_DIR/$name.toml"
       dest="$target_dir/$name.toml"
+    elif [ "$tool" = "opencode" ]; then
+      # OpenCode agents use their own frontmatter dialect from opencode-agents/
+      if [ ! -f "$OPENCODE_AGENTS_DIR/$name.md" ]; then
+        echo "Skipping agent '$name' for OpenCode (no opencode-agents version)" >&2
+        continue
+      fi
+      src="$OPENCODE_AGENTS_DIR/$name.md"
+      dest="$target_dir/$name.md"
     else
       dest="$target_dir/$name.md"
     fi
@@ -159,11 +218,11 @@ uninstall_item() {
   local name="$1" mode="$2"
   resolve_item "$name"
 
-  while IFS= read -r target_dir; do
+  while IFS=: read -r tool target_dir; do
     local dest
     if [ "$ITEM_TYPE" = "skill" ]; then
       dest="$target_dir/$name"
-    elif [[ "$target_dir" == */.codex/* ]]; then
+    elif [ "$tool" = "codex" ]; then
       dest="$target_dir/$name.toml"
     else
       dest="$target_dir/$name.md"
@@ -182,21 +241,23 @@ uninstall_item() {
 
 prune_stale() {
   local mode="$1"
-  local claude_base codex_base kimi_base
+  local claude_base codex_base kimi_base opencode_base
   if [ "$mode" = "--personal" ]; then
     claude_base="$HOME/.claude"
     codex_base="$HOME/.codex"
     kimi_base="${KIMI_CODE_HOME:-$HOME/.kimi-code}"
+    opencode_base="${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}"
   elif [ "$mode" = "--project" ]; then
     claude_base="$(pwd)/.claude"
     codex_base="$(pwd)/.codex"
     kimi_base="$(pwd)/.kimi-code"
+    opencode_base="$(pwd)/.opencode"
   else
     echo "Error: specify --personal or --project" >&2
     exit 1
   fi
 
-  for dir in "$claude_base/skills" "$claude_base/agents" "$codex_base/skills" "$codex_base/agents" "$kimi_base/skills" "$kimi_base/agents"; do
+  for dir in "$claude_base/skills" "$claude_base/agents" "$codex_base/skills" "$codex_base/agents" "$kimi_base/skills" "$kimi_base/agents" "$opencode_base/skills" "$opencode_base/agents"; do
     [ -d "$dir" ] || continue
     for link in "$dir"/*; do
       [ -L "$link" ] || continue
@@ -246,10 +307,12 @@ classify_hooks() {
   done
 }
 
-# Install hooks into the current project's .claude/settings.json and .codex/hooks.json
+# Install hooks into the current project's .claude/settings.json, .codex/hooks.json,
+# and .opencode/plugins/
 install_hooks() {
   install_hooks_json ".claude/settings.json" claude
   install_hooks_json ".codex/hooks.json" codex
+  install_opencode_plugin "$(pwd)/.opencode"
 }
 
 # $1 = target file, $2 = flavor (claude|codex) — both use the same JSON schema
@@ -363,6 +426,7 @@ PYEOF
 uninstall_hooks() {
   uninstall_hooks_json ".claude/settings.json"
   uninstall_hooks_json ".codex/hooks.json"
+  uninstall_opencode_plugin "$(pwd)/.opencode"
 }
 
 uninstall_hooks_json() {
@@ -408,6 +472,52 @@ with open(settings_path, "w") as f:
     f.write("\n")
 PYEOF
   echo "Removed dotskills hooks from $settings"
+}
+
+# --- OpenCode hooks (plugin-based, no JSON config to merge) ---
+
+opencode_config_dir() {
+  echo "${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}"
+}
+
+# Symlink the OpenCode hooks plugin into <base>/plugins/. OpenCode auto-loads
+# any file dropped in that directory at startup — no config.json entry needed.
+install_opencode_plugin() {
+  local base="$1"
+  local plugin_dir="$base/plugins"
+  local dest="$plugin_dir/dotskills-hooks.js"
+  local src="$HOOKS_DIR/opencode-plugin.js"
+
+  if [ ! -f "$src" ]; then
+    echo "No opencode-plugin.js found in $HOOKS_DIR"
+    return
+  fi
+
+  mkdir -p "$plugin_dir"
+  if [ -L "$dest" ]; then
+    echo "OpenCode hooks plugin already installed at $dest"
+    return
+  elif [ -e "$dest" ]; then
+    echo "Warning: $dest exists and is not a symlink, skipping" >&2
+    return
+  fi
+
+  ln -s "$src" "$dest"
+  echo "Installed OpenCode hooks plugin -> $dest"
+}
+
+uninstall_opencode_plugin() {
+  local base="$1"
+  local dest="$base/plugins/dotskills-hooks.js"
+
+  if [ -L "$dest" ]; then
+    rm "$dest"
+    echo "Removed $dest"
+  elif [ -e "$dest" ]; then
+    echo "Warning: $dest is not a symlink, skipping" >&2
+  else
+    echo "No dotskills OpenCode hooks plugin found at $dest"
+  fi
 }
 
 # --- Kimi Code hooks (user-level ~/.kimi-code/config.toml only) ---
@@ -574,12 +684,17 @@ case "${1:-}" in
     shift
     install_kimi_hooks "$@"
     ;;
+  --opencode-hooks)
+    install_opencode_plugin "$(opencode_config_dir)"
+    ;;
   --uninstall)
     mode="${2:-}"
     name="${3:-}"
     if [ "$mode" = "--kimi-hooks" ]; then
       shift 2
       uninstall_kimi_hooks "$@"
+    elif [ "$mode" = "--opencode-hooks" ]; then
+      uninstall_opencode_plugin "$(opencode_config_dir)"
     elif [ -n "$name" ]; then
       uninstall_item "$name" "$mode"
     else

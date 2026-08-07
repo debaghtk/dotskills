@@ -5,6 +5,10 @@ contract across Claude Code, Codex CLI, and Kimi Code: tool info arrives as
 JSON on stdin (`tool_input.command` / `tool_input.file_path`), exit code 2
 blocks (reason on stderr), exit code 0 allows.
 
+OpenCode doesn't speak that contract natively (no stdin JSON, no exit-code
+blocking), so `opencode-plugin.js` translates for it — see "OpenCode Caveats"
+below. The underlying scripts and their behavior are unchanged.
+
 ## What These Do
 
 - **block-railway.sh** — PreToolUse on `Bash`. Blocks direct destructive
@@ -27,16 +31,21 @@ blocks (reason on stderr), exit code 0 allows.
 From the repo root (`install.sh` handles classification and merging):
 
 ```bash
-# Claude + Codex, current project (./.claude/settings.json + ./.codex/hooks.json)
+# Claude + Codex + OpenCode, current project
+# (./.claude/settings.json + ./.codex/hooks.json + ./.opencode/plugins/)
 ~/dotskills/install.sh --hooks
 
 # Kimi Code, user-level (~/.kimi-code/config.toml — fires in every project)
 ~/dotskills/install.sh --kimi-hooks                  # all hooks
 ~/dotskills/install.sh --kimi-hooks block-railway    # just one
 
+# OpenCode, user-level (~/.config/opencode/plugins/ — fires in every project)
+~/dotskills/install.sh --opencode-hooks
+
 # Remove
-~/dotskills/install.sh --uninstall --project          # claude + codex
+~/dotskills/install.sh --uninstall --project          # claude + codex + opencode
 ~/dotskills/install.sh --uninstall --kimi-hooks       # kimi
+~/dotskills/install.sh --uninstall --opencode-hooks   # opencode (user-level)
 ```
 
 Hook commands point back to the dotskills source, so they stay up to date.
@@ -64,6 +73,25 @@ installed hooks fire in every project (scripts self-limit outside git repos).
   context — their nags may not surface there.
 - `approve-tests.sh` reads your answer from `/dev/tty`; if the tty is
   unavailable in Kimi's hook process, spec-file writes will be blocked.
+
+## OpenCode Caveats
+
+`opencode-plugin.js` is a single file — dropping it into `.opencode/plugins/`
+(or `~/.config/opencode/plugins/`) is enough for OpenCode to auto-load it, no
+config.json entry needed. It wires `tool.execute.before` to `block-railway.sh` (on the
+`bash` tool) and `approve-tests.sh` (on the `write`/`edit` tools), and
+`tool.execute.after` to both drift scripts (on the `bash` tool), reusing the
+same stdin-JSON/exit-code contract described above under the hood.
+
+- Unlike `--kimi-hooks`, there's no per-hook selection — installing the
+  plugin wires up all four scripts as one unit. Comment out the parts you
+  don't want directly in `opencode-plugin.js`.
+- `approve-tests.sh` reads your answer from `/dev/tty`; if that's unavailable
+  in OpenCode's plugin process (e.g. it's running detached from your
+  terminal), the `read` fails and — since the adapter only blocks on exit
+  code 2 — the write is allowed through rather than blocked.
+- The drift hooks' stderr output goes to whatever terminal OpenCode's plugin
+  process inherits; if it's running detached, the nags may not surface.
 
 ## Customizing Paths
 
