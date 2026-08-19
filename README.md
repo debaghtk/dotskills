@@ -18,7 +18,6 @@ cd /path/to/project
 # Install a single item
 ./install.sh --personal ds-ux
 ./install.sh --personal mountain
-./install.sh --project research
 ```
 
 ## Uninstall
@@ -43,7 +42,6 @@ Skills are invoked inside a Claude Code session with `/skill-name`:
 
 ```
 /ds-ux evaluate whether adding a settings page improves or hurts the onboarding flow
-/ds-codex review this file for performance issues
 ```
 
 In Kimi Code, the same skills are invoked with `/skill:<name>`:
@@ -63,13 +61,13 @@ Skills can also be auto-triggered when the task matches the skill's description.
 Agents are invoked from the terminal with `claude --agent` or `kimi --agent`:
 
 ```bash
-claude --agent research "best approach for real-time sync with conflict resolution"
-kimi --agent research "best approach for real-time sync with conflict resolution"
+claude --agent my-agent "best approach for real-time sync with conflict resolution"
+kimi --agent my-agent "best approach for real-time sync with conflict resolution"
 ```
 
 Or from within a session using the Agent tool — the assistant will pick the right agent based on the task.
 
-OpenCode agents are `subagent`-mode and invoked the same way, either by name via `@` (e.g. `@research best approach for real-time sync with conflict resolution`) or automatically via its Task tool.
+OpenCode agents are `subagent`-mode and invoked the same way, either by name via `@` (e.g. `@my-agent best approach for real-time sync with conflict resolution`) or automatically via its Task tool.
 
 ## Adding a new skill
 
@@ -119,8 +117,7 @@ This `.md` version is used for Claude and Kimi Code. Codex needs its own
 system prompt inlined as `developer_instructions` since Codex can't load
 skills on demand). OpenCode needs its own `.md` version in
 `opencode-agents/my-agent.md` (frontmatter is `description` + `mode:
-subagent` instead of `name`/`skills`) — see the existing agents in that
-directory for examples. Either `.toml` or OpenCode's `.md` is optional; if
+subagent` instead of `name`/`skills`). Either `.toml` or OpenCode's `.md` is optional; if
 missing, install.sh skips that tool for the agent with a warning.
 
 Re-run `./install.sh --personal` to pick up new items.
