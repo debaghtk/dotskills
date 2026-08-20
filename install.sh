@@ -49,7 +49,7 @@ Examples:
   ./install.sh --list
   ./install.sh --personal                   # Install all skills + agents
   ./install.sh --personal ux                # Install one skill
-  ./install.sh --personal research          # Install one agent
+  ./install.sh --personal my-agent          # Install one agent
   ./install.sh --project                    # Install all + problems + hooks
   ./install.sh --sync --personal            # Install all + prune stale symlinks
   ./install.sh --problems                   # Just copy problems/ template
