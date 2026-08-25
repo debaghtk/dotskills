@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Handoff"
+  short_description: "Compact this session into a handoff doc for a fresh agent"
+  default_prompt: "Use $ds-handoff to write a handoff document for the next session."
