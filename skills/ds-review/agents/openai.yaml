@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Review"
+  short_description: "Spec-driven PR/worktree review for user-facing prod breakage (P0) and standards (P1)"
+  default_prompt: "Use $ds-review to review this change against its spec."
