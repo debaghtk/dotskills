@@ -96,7 +96,7 @@ interface:
   default_prompt: "Use $my-skill to ..."
 ```
 
-Only a few skills have this today (`ds-handoff`, `ds-review`, `ds-teach`, `linear-project`, `mountain`) — it's
+Only a few skills have this today (`ds-handoff`, `ds-review`, `ds-teach`, `ds-leash`, `linear-project`, `mountain`) — it's
 recommended but not required, and every other tool ignores it, so it's safe to skip.
 
 ## Adding a new agent
