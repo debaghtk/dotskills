@@ -1,4 +1,4 @@
 interface:
   display_name: "DS Leash"
-  short_description: "Lead align → implement → review → fix across agents in Herdr"
+  short_description: "Lead align → implement → review → fix across Codex and Claude agents in Herdr"
   default_prompt: "Use $ds-leash to build this with an implementer and a reviewer."

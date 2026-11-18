@@ -1,6 +1,6 @@
 ---
 name: ds-leash
-description: "Lead a build-review-fix loop across agents inside the Herdr app. You (the lead) align on requirements with ds-align, write a handoff, start a Codex gpt-6.2-sol implementer in a new tab of the same worktree, start a Claude Opus 5.5 reviewer running ds-review once the work is done, filter the review down to the findings that matter, and send only those fixes back to the implementer. Use when the user says 'leash', 'ds-leash', '/ds-leash', or asks to run the align → implement → review → fix pipeline with other agents. Only works inside Herdr (needs `hc` and $HC_TERMINAL_ID)."
+description: "Lead a build-review-fix loop across agents inside the Herdr app. You (the lead) align on requirements with ds-align, write a handoff, start an implementer in a new tab of the same worktree, start a reviewer from the other vendor running ds-review once the work is done, filter the review down to the findings that matter, and send only those fixes back to the implementer. The roster depends on the host: from Codex (Astra lead), the implementer is Codex gpt-6.2-sol and the reviewer is Claude Opus 5.5; from Claude Code (Opus lead), the implementer is Claude Sonnet and the reviewer is Codex Astra. Use when the user says 'leash', 'ds-leash', '/ds-leash', or asks to run the align → implement → review → fix pipeline with other agents. Only works inside Herdr (needs `hc` and $HC_TERMINAL_ID)."
 argument-hint: "What should be built?"
 disable-model-invocation: true
 ---
@@ -12,12 +12,23 @@ You are the **lead**. You hold the requirements and decide what counts as done. 
 ```
 lead (you) ── ds-align ── handoff.md
    │
-   ├─▶ impl     codex gpt-6.2-sol high      builds from handoff.md      ──▶ reports to lead
+   ├─▶ impl     IMPL_CMD      builds from handoff.md      ──▶ reports to lead
    │
-   ├─▶ review   claude opus 5.5 xhigh       ds-review against handoff   ──▶ review.md to lead
+   ├─▶ review   REVIEW_CMD    ds-review against handoff   ──▶ review.md to lead
    │
    └─ lead triages review.md ─▶ fixes.md ─▶ impl (same agent, same tab) ──▶ reports to lead
 ```
+
+## Roster
+
+Pick the roster by the harness **you** are running in. The reviewer always comes from the other vendor than the implementer, so the review isn't one model grading its own work.
+
+| You are running in | Lead (you) | Implementer `IMPL_CMD` | Reviewer `REVIEW_CMD` | Reviewer skill call |
+|---|---|---|---|---|
+| Codex | gpt-6-astra, xhigh | `codex -m gpt-6.2-sol -c model_reasoning_effort=high` | `claude --model claude-opus-5-5 --effort xhigh` | `/ds-review` |
+| Claude Code | claude-opus-5-5, xhigh | `claude --model sonnet` (alias for the latest Sonnet) | `codex -m gpt-6.2-astra -c model_reasoning_effort=xhigh` | `$ds-review` |
+
+The lead's model is whatever session the user started. If it doesn't match the table (for example Claude Code on Sonnet, or a lower effort), tell the user once and ask whether to continue. Don't restart yourself.
 
 ## Phase 0 — Preflight
 
@@ -51,11 +62,11 @@ Start the implementer as your child, in a new tab of the same space and worktree
 
 ```sh
 hc run --bg --name leash-impl --label herdr.space="$SPACE" --cwd "$WT" \
-  codex -m gpt-6.2-sol -c model_reasoning_effort=high \
+  <IMPL_CMD> \
   "You are the implementer in a leash run. Read $RUN/handoff.md and implement it in this worktree. Rules: stay inside the handoff's scope; do not start other agents; do not commit, push, or open PRs unless the handoff says to; run the handoff's Verification commands before you report. When done or stuck, write a short report to $RUN/impl-report.md (what changed, files touched, verification output, anything left open) and then run: hc send $HC_TERMINAL_ID \"impl done: $RUN/impl-report.md\" (or \"impl stuck: <reason>\")."
 ```
 
-Expand `$RUN`, `$WT`, `$SPACE` and `$HC_TERMINAL_ID` to literal values in the task text so the child doesn't depend on your environment.
+Replace `<IMPL_CMD>` with the roster's command, and expand `$RUN`, `$WT`, `$SPACE` and `$HC_TERMINAL_ID` to literal values in the task text so the child doesn't depend on your environment.
 
 Then check the launch result:
 
@@ -72,13 +83,13 @@ Start the reviewer as a separate child in its own tab:
 
 ```sh
 hc run --bg --name leash-review --label herdr.space="$SPACE" --cwd "$WT" \
-  claude --model claude-opus-5-5 --effort xhigh \
-  "/ds-review $WT $RUN/handoff.md
+  <REVIEW_CMD> \
+  "<reviewer skill call> $WT $RUN/handoff.md
 
 You are the reviewer in a leash run. The spec is $RUN/handoff.md; its acceptance criteria are the bar. Review the current worktree (committed-but-unmerged plus uncommitted changes). Stay read-only and do not start other agents. Write the full findings, in ds-review's output format, to $RUN/review.md, then run: hc send $HC_TERMINAL_ID \"review done: $RUN/review.md\". If you are blocked or need an answer, send that instead."
 ```
 
-Wait the same way as in Phase 3. Once `review.md` arrives, kill and remove the reviewer: `hc kill leash-review; hc rm leash-review`.
+Use the roster's `<REVIEW_CMD>` and skill call (`/ds-review` for Claude, `$ds-review` for Codex), expanding values as in Phase 3. Wait the same way as in Phase 3. Once `review.md` arrives, kill and remove the reviewer: `hc kill leash-review; hc rm leash-review`.
 
 ## Phase 5 — Triage the review
 
